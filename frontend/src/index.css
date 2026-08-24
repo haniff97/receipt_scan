@@ -1,0 +1,51 @@
+:root {
+  --bg: #f3f3f3;
+  --card: #ffffff;
+  --text-main: #000000;
+  --text-muted: #888888;
+  --orange: #ff8c00;
+  --border: #f0f0f0;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+}
+
+input {
+  font-family: inherit;
+}
+
+.action-card {
+  transition: transform 0.1s ease, box-shadow 0.2s ease;
+}
+
+.action-card:active {
+  transform: scale(0.96);
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}

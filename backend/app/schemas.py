@@ -1,0 +1,39 @@
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict
+
+
+class TransactionBase(BaseModel):
+    date: datetime
+    amount: float
+    merchant: str
+    category: str
+    description: str = ""
+
+
+class TransactionCreate(TransactionBase):
+    pass
+
+
+class TransactionOut(TransactionBase):
+    id: int
+    receipt_id: int | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ReceiptOut(BaseModel):
+    id: int
+    filename: str
+    uploaded_at: datetime
+    ocr_text: str
+    transactions: list[TransactionOut]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ReceiptCreateResponse(BaseModel):
+    id: int
+    filename: str
+    transactions_created: int
+    ocr_text: str

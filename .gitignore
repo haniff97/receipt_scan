@@ -1,0 +1,12 @@
+deepseek.md
+.env
+
+# Python & Backend
+.venv/
+__pycache__/
+*.pyc
+backend/receipts.db
+backend/uploads/
+
+# OS
+.DS_Store

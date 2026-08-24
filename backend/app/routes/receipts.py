@@ -13,7 +13,7 @@ from ..ocr import ocr_image, parse_receipt
 
 router = APIRouter()
 
-UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads")
+UPLOAD_DIR = os.environ.get("UPLOAD_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads"))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 

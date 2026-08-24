@@ -48,6 +48,18 @@ def delete_transaction(tx_id: int, db: Session = Depends(get_db)):
     return {"deleted": tx_id}
 
 
+@router.patch("/transactions/{tx_id}", response_model=TransactionOut)
+def update_transaction(tx_id: int, payload: TransactionCreate, db: Session = Depends(get_db)):
+    tx = db.get(Transaction, tx_id)
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    for field, value in payload.model_dump().items():
+        setattr(tx, field, value)
+    db.commit()
+    db.refresh(tx)
+    return tx
+
+
 @router.get("/categories")
 def categories(db: Session = Depends(get_db)):
     rows = (
@@ -78,7 +90,7 @@ def stats(db: Session = Depends(get_db)):
 def dashboard(db: Session = Depends(get_db)):
     from datetime import datetime, timedelta
 
-    now = datetime.utcnow()
+    now = datetime.now()
     start_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     start_week = start_today - timedelta(days=start_today.weekday())
     start_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -121,7 +133,7 @@ def dashboard(db: Session = Depends(get_db)):
 def dashboard_summary(db: Session = Depends(get_db)):
     from datetime import datetime, timedelta
 
-    now = datetime.utcnow()
+    now = datetime.now()
     rows = db.query(Transaction.date, Transaction.category, Transaction.amount).all()
 
     monthly = {}

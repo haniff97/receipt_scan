@@ -87,3 +87,32 @@ input {
     opacity: 1;
   }
 }
+
+.morph-panel {
+  animation: morphIn 1.4s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+}
+
+.morph-panel img {
+  animation: straighten 1.4s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+  transform-origin: center;
+}
+
+@keyframes straighten {
+  0% {
+    transform: rotate(-4deg) scale(1.08);
+    filter: blur(1px) brightness(0.9);
+  }
+  100% {
+    transform: rotate(0deg) scale(1);
+    filter: blur(0) brightness(1);
+  }
+}
+
+@keyframes morphIn {
+  from {
+    opacity: 0.6;
+  }
+  to {
+    opacity: 1;
+  }
+}

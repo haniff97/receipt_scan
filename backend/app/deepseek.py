@@ -44,6 +44,13 @@ def enhance_ocr(ocr_text):
             "content": (
                 "You extract data from messy OCR receipt text. "
                 "Fix OCR errors (e.g. '1674' total means 16.74, 'CORNERCAFE' means 'Corner Cafe'). "
+                "IMPORTANT — determining 'total': "
+                "1) Prefer the printed GRAND TOTAL / TOTAL (RM) line when readable. "
+                "2) If the total line is unreadable or missing, SUM the item prices from the 'items' "
+                "list you extracted (each item has name and price). "
+                "3) If the OCR mentions a tax percentage (e.g. 'Tax 6%'), ADD that tax to the subtotal "
+                "to get the final total. Round to 2 decimals. "
+                "The total MUST reflect what the customer actually pays. "
                 f"Return ONLY valid JSON with keys: "
                 f'"merchant" (string), "total" (number), "date" (YYYY-MM-DD or null), '
                 f'"category" (one of: {CATEGORIES}), "items" (list of {{"name","price"}}).'

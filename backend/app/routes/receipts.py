@@ -3,13 +3,16 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from pillow_heif import register_heif_opener
 from sqlalchemy.orm import Session
 
 from ..deepseek import enhance_ocr
 from ..database import get_db
 from ..models import Receipt, Transaction
 from ..schemas import ReceiptCreateResponse
-from ..ocr import ocr_image, parse_receipt
+from ..ocr import ocr_image, open_as_image, parse_receipt, deskew_bytes
+
+register_heif_opener()
 
 router = APIRouter()
 
@@ -24,10 +27,32 @@ async def upload_receipt(
     db: Session = Depends(get_db),
 ):
     image_bytes = await file.read()
-    try:
+    is_pdf_file = image_bytes[:5] == b"%PDF-"
+
+    if is_pdf_file:
+        display_bytes = image_bytes
         text = ocr_image(image_bytes)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"OCR failed: {e}")
+    else:
+        try:
+            display_bytes = deskew_bytes(image_bytes)
+        except Exception:
+            display_bytes = image_bytes
+        try:
+            text = ocr_image(display_bytes)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"OCR failed: {e}")
+
+    existing = (
+        db.query(Receipt)
+        .filter(Receipt.ocr_text == text)
+        .first()
+    )
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"This receipt was already uploaded (id={existing.id}). "
+                   f"Scan a different receipt.",
+        )
 
     parsed = parse_receipt(text)
 
@@ -37,9 +62,9 @@ async def upload_receipt(
         merchant = ai.get("merchant") or "Unknown"
         category = ai.get("category") or category
         try:
-            tx_date = datetime.fromisoformat(ai["date"]) if ai.get("date") else datetime.utcnow()
+            tx_date = datetime.fromisoformat(ai["date"]) if ai.get("date") else datetime.now()
         except (ValueError, TypeError):
-            tx_date = datetime.utcnow()
+            tx_date = datetime.now()
     else:
         parsed = parse_receipt(text)
         if parsed["total"] is None:
@@ -50,16 +75,15 @@ async def upload_receipt(
             )
         total = parsed["total"]
         merchant = parsed["merchant"]
-        tx_date = parsed["date"] or datetime.utcnow()
+        tx_date = parsed["date"] or datetime.now()
 
     receipt = Receipt(filename=file.filename or "receipt.png", ocr_text=text)
     db.add(receipt)
     db.flush()
 
-    ext = os.path.splitext(receipt.filename)[1] or ".png"
-    image_path = os.path.join(UPLOAD_DIR, f"{receipt.id}{ext}")
-    with open(image_path, "wb") as f:
-        f.write(image_bytes)
+    image_path = os.path.join(UPLOAD_DIR, f"{receipt.id}.png")
+    img = open_as_image(display_bytes)
+    img.save(image_path, "PNG")
 
     tx = Transaction(
         date=tx_date,
@@ -72,12 +96,17 @@ async def upload_receipt(
     db.add(tx)
     db.commit()
     db.refresh(receipt)
+    db.refresh(tx)
 
     return {
         "id": receipt.id,
         "filename": receipt.filename,
         "transactions_created": 1,
         "ocr_text": text[:500],
+        "image_url": f"/api/receipts/{receipt.id}/image",
+        "transaction_id": tx.id,
+        "amount": total,
+        "merchant": merchant,
     }
 
 
@@ -96,13 +125,26 @@ def list_receipts(db: Session = Depends(get_db)):
     ]
 
 
+@router.delete("/receipts/{receipt_id}")
+def delete_receipt(receipt_id: int, db: Session = Depends(get_db)):
+    receipt = db.get(Receipt, receipt_id)
+    if not receipt:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+    image_path = os.path.join(UPLOAD_DIR, f"{receipt.id}.png")
+    if os.path.exists(image_path):
+        os.remove(image_path)
+    db.query(Transaction).filter(Transaction.receipt_id == receipt_id).delete()
+    db.delete(receipt)
+    db.commit()
+    return {"deleted": receipt_id}
+
+
 @router.get("/receipts/{receipt_id}/image")
 def receipt_image(receipt_id: int, db: Session = Depends(get_db)):
     receipt = db.get(Receipt, receipt_id)
     if not receipt:
         raise HTTPException(status_code=404, detail="Receipt not found")
-    ext = os.path.splitext(receipt.filename)[1] or ".png"
-    image_path = os.path.join(UPLOAD_DIR, f"{receipt.id}{ext}")
+    image_path = os.path.join(UPLOAD_DIR, f"{receipt.id}.png")
     if not os.path.exists(image_path):
         raise HTTPException(status_code=404, detail="Image not found")
     return FileResponse(image_path, media_type="image/png")

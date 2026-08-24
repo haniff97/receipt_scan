@@ -37,3 +37,7 @@ class ReceiptCreateResponse(BaseModel):
     filename: str
     transactions_created: int
     ocr_text: str
+    image_url: str = ""
+    transaction_id: int | None = None
+    amount: float | None = None
+    merchant: str | None = None

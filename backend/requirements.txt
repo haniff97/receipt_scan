@@ -6,3 +6,6 @@ python-multipart==0.0.19
 pillow==11.0.0
 numpy==2.2.0
 pytesseract==0.3.13
+pillow-heif==1.5.0
+pymupdf==1.28.2
+opencv-python-headless==5.0.0.93

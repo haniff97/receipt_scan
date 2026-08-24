@@ -27,7 +27,7 @@ class Receipt(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     filename: Mapped[str] = mapped_column(String(300))
-    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     ocr_text: Mapped[str] = mapped_column(Text, default="")
 
     transactions: Mapped[list[Transaction]] = relationship(

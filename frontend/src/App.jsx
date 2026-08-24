@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { 
-  HelpCircle, 
+  Settings, 
   Bell, 
   Scan, 
   Type, 
@@ -11,16 +11,18 @@ import {
   Mic, 
   Layers, 
   Sparkles, 
-  Plus,
   Camera,
+  Plus,
   AlertTriangle,
   ReceiptText
 } from "lucide-react";
 
 const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api";
+const API_ORIGIN = API.replace(/\/api$/, "");
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("home");
+  const [currency, setCurrency] = useState(() => localStorage.getItem("currency") || "$");
   const [stats, setStats] = useState(null);
   const [anomalies, setAnomalies] = useState([]);
   const [rejectedAnomalies, setRejectedAnomalies] = useState([]);
@@ -35,9 +37,15 @@ export default function App() {
   const [processing, setProcessing] = useState(false);
   const [showNotify, setShowNotify] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedForDelete, setSelectedForDelete] = useState([]);
   const [receiptCategory, setReceiptCategory] = useState("groceries");
   const [customCategory, setCustomCategory] = useState("");
   const [receiptPreview, setReceiptPreview] = useState(null);
+  const [receiptOriginal, setReceiptOriginal] = useState(null);
+  const [confirming, setConfirming] = useState(false);
+  const [editTotal, setEditTotal] = useState(null);
+  const [editTxId, setEditTxId] = useState(null);
   const [msg, setMsg] = useState("");
   const searchRef = useRef(null);
   const fileRef = useRef(null);
@@ -45,7 +53,7 @@ export default function App() {
 
   const refresh = async () => {
     try {
-      const [s, a, r, d, t, sm] = await Promise.all([
+      const [s, a, r, d, t, sm] = await Promise.allSettled([
         axios.get(`${API}/stats`),
         axios.get(`${API}/anomalies`),
         axios.get(`${API}/receipts`),
@@ -53,13 +61,15 @@ export default function App() {
         axios.get(`${API}/transactions`),
         axios.get(`${API}/dashboard/summary`),
       ]);
-      setStats(s.data);
-      setAnomalies(a.data.anomalies);
-      setRejectedAnomalies(a.data.rejected || []);
-      setReceipts(r.data);
-      setDash(d.data);
-      setTransactions(t.data);
-      setDashSummary(sm.data.summary);
+      if (s.status === "fulfilled") setStats(s.value.data);
+      if (a.status === "fulfilled") {
+        setAnomalies(a.value.data.anomalies);
+        setRejectedAnomalies(a.value.data.rejected || []);
+      }
+      if (r.status === "fulfilled") setReceipts(r.value.data);
+      if (d.status === "fulfilled") setDash(d.value.data);
+      if (t.status === "fulfilled") setTransactions(t.value.data);
+      if (sm.status === "fulfilled") setDashSummary(sm.value.data.summary);
     } catch (e) {
       setMsg("Backend not reachable. Is uvicorn running on :8000?");
     }
@@ -68,6 +78,10 @@ export default function App() {
   useEffect(() => {
     refresh();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === "dashboard") refresh();
+  }, [activeTab]);
 
   useEffect(() => {
     if (anomalies.length > 0 && !showAlerts) {
@@ -92,15 +106,20 @@ export default function App() {
       : receiptCategory;
     setMsg("");
     setProcessing(true);
+    setReceiptOriginal(URL.createObjectURL(file));
+    setReceiptPreview(null);
     try {
-      const styled = await toDocumentImage(file);
-      setReceiptPreview(styled);
       const fd = new FormData();
       fd.append("file", file);
       fd.append("category", category);
       const r = await axios.post(`${API}/receipts/upload`, fd);
-      setMsg(`Uploaded ${r.data.filename} — ${r.data.transactions_created} transaction created.`);
-      refresh();
+
+      const backendImg = `${API_ORIGIN}${r.data.image_url || `/api/receipts/${r.data.id}/image`}`;
+      setReceiptPreview(backendImg);
+      setEditTotal(r.data.amount ?? null);
+      setEditTxId(r.data.transaction_id ?? null);
+      setConfirming(true);
+      await refresh();
     } catch (err) {
       setMsg(err.response?.data?.detail || "Upload failed.");
     } finally {
@@ -108,81 +127,64 @@ export default function App() {
     }
   };
 
-  const toDocumentImage = (file) => new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      try {
-        const maxW = 800;
-        const scale = Math.min(1, maxW / img.width);
-        const w = Math.round(img.width * scale);
-        const h = Math.round(img.height * scale);
+  const saveEditedTotal = async () => {
+    if (editTxId === null) return;
+    try {
+      const txs = transactions;
+      const cur = txs.find((x) => x.id === editTxId);
+      await axios.patch(`${API}/transactions/${editTxId}`, {
+        date: cur ? cur.date : new Date().toISOString(),
+        amount: parseFloat(editTotal),
+        merchant: cur ? cur.merchant : "Unknown",
+        category: cur ? cur.category : (receiptCategory === "__other__" ? (customCategory.trim() || "other") : receiptCategory),
+        description: cur ? cur.description : "",
+      });
+      setConfirming(false);
+      setMsg("Total updated.");
+      await refresh();
+    } catch (err) {
+      setMsg(err.response?.data?.detail || "Failed to update total.");
+    }
+  };
 
-        const src = document.createElement("canvas");
-        src.width = w;
-        src.height = h;
-        const sctx = src.getContext("2d");
-        sctx.drawImage(img, 0, 0, w, h);
+  const toggleSelectReceipt = (id) => {
+    setSelectedForDelete((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
 
-        const { data } = sctx.getImageData(0, 0, w, h);
-        let minX = w, minY = h, maxX = 0, maxY = 0;
-        for (let y = 0; y < h; y += 3) {
-          for (let x = 0; x < w; x += 3) {
-            const i = (y * w + x) * 4;
-            const lum = (data[i] + data[i + 1] + data[i + 2]) / 3;
-            if (lum < 215) {
-              if (x < minX) minX = x;
-              if (x > maxX) maxX = x;
-              if (y < minY) minY = y;
-              if (y > maxY) maxY = y;
-            }
-          }
-        }
-
-        if (maxX <= minX || maxY <= minY) {
-          URL.revokeObjectURL(url);
-          resolve(url);
-          return;
-        }
-
-        const pad = 24;
-        const bw = Math.min(w, maxX - minX + pad * 2);
-        const bh = Math.min(h, maxY - minY + pad * 2);
-        const sx = Math.max(0, Math.floor((maxX + minX) / 2 - bw / 2));
-        const sy = Math.max(0, Math.floor((maxY + minY) / 2 - bh / 2));
-
-        const doc = document.createElement("canvas");
-        doc.width = Math.round(bw);
-        doc.height = Math.round(bh);
-        const dctx = doc.getContext("2d");
-        dctx.fillStyle = "#ffffff";
-        dctx.fillRect(0, 0, doc.width, doc.height);
-        dctx.shadowColor = "rgba(0,0,0,0.18)";
-        dctx.shadowBlur = 16;
-        dctx.shadowOffsetY = 6;
-        dctx.drawImage(src, sx, sy, bw, bh, 0, 0, doc.width, doc.height);
-        dctx.shadowColor = "transparent";
-        dctx.drawImage(src, sx, sy, bw, bh, 0, 0, doc.width, doc.height);
-
-        URL.revokeObjectURL(url);
-        resolve(doc.toDataURL("image/png"));
-      } catch (e) {
-        reject(e);
-      }
-    };
-    img.onerror = reject;
-    img.src = url;
-  });
+  const deleteSelectedReceipts = async () => {
+    if (selectedForDelete.length === 0) return;
+    try {
+      await Promise.all(
+        selectedForDelete.map((id) => axios.delete(`${API}/receipts/${id}`))
+      );
+      setSelectedForDelete([]);
+      setSelectMode(false);
+      setMsg("Receipt(s) deleted.");
+      await refresh();
+    } catch (err) {
+      setMsg(err.response?.data?.detail || "Failed to delete.");
+    }
+  };
 
   const resetScan = () => {
     setReceiptPreview(null);
+    setReceiptOriginal(null);
     setMsg("");
+    setConfirming(false);
+    setEditTotal(null);
+    setEditTxId(null);
     setProcessing(false);
     setReceiptCategory("groceries");
     setCustomCategory("");
   };
 
-  const $ = (n) => (n === null || n === undefined ? "-" : `$${Number(n).toFixed(2)}`);
+  const $ = (n) => {
+    if (n === null || n === undefined) return "-";
+    const symbol = currency === "RM" ? "RM " : "$";
+    return `${symbol}${Number(n).toFixed(2)}`;
+  };
 
   const dashFiltered = useMemo(() => {
     const now = new Date();
@@ -257,8 +259,8 @@ export default function App() {
 
       {/* Header */}
       <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "32px" }}>
-        <button style={{ color: "var(--text-main)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <HelpCircle size={24} strokeWidth={1.5} />
+        <button onClick={() => setActiveTab("settings")} style={{ color: "var(--text-main)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Settings size={24} strokeWidth={1.5} />
         </button>
         <button onClick={() => setShowAlerts(!showAlerts)} style={{ color: "var(--text-main)", position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <Bell size={24} strokeWidth={1.5} />
@@ -499,11 +501,27 @@ export default function App() {
             <div style={{ color: "var(--text-muted)", fontSize: 12 }}>Uses your camera — we'll read it with OCR</div>
           </button>
 
+          <button
+            className="action-card"
+            onClick={() => fileRef.current?.click()}
+            style={{
+              background: "var(--card)",
+              borderRadius: 16,
+              padding: 14,
+              textAlign: "center",
+              fontSize: 14,
+              color: "var(--text-muted)",
+              boxShadow: "0 2px 10px rgba(0,0,0,0.03)"
+            }}
+          >
+            or choose from gallery / PDF
+          </button>
+
 
           <input
             ref={cameraRef}
             type="file"
-            accept="image/*"
+            accept="image/*,.pdf"
             capture="environment"
             style={{ display: "none" }}
             onChange={(e) => {
@@ -555,10 +573,42 @@ export default function App() {
           {receiptPreview && !processing && (
             <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>
               <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>Scanned document</div>
-              <div className="doc-snap" style={{ display: "flex", justifyContent: "center", padding: 8, background: "#f7f7f9", borderRadius: 12 }}>
-                <img src={receiptPreview} alt="scanned receipt" style={{ maxWidth: "100%", maxHeight: 320, borderRadius: 4 }} />
-              </div>
-              <button onClick={resetScan} style={{ width: "100%", marginTop: 12, background: "#111111", borderRadius: 12, padding: 14, color: "#fff", fontWeight: 600 }}>
+
+              {receiptOriginal && (
+                <div className="morph-panel" style={{ background: "#fff", borderRadius: 12, overflow: "hidden", padding: 6, boxShadow: "0 2px 10px rgba(0,0,0,0.08)", position: "relative" }}>
+                  <img src={receiptPreview} alt="scanned receipt" style={{ width: "100%", maxHeight: 320, objectFit: "contain", borderRadius: 8 }} />
+                </div>
+              )}
+
+              {confirming && (
+                <div style={{ background: "#f4f4f6", borderRadius: 12, padding: 14, marginTop: 4 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>Confirm total amount</div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <span style={{ fontSize: 16, fontWeight: 700 }}>{currency === "RM" ? "RM" : "$"}</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={editTotal ?? ""}
+                      onChange={(e) => setEditTotal(e.target.value)}
+                      style={{ flex: 1, padding: 10, borderRadius: 10, border: "1px solid var(--border)", background: "#fff", fontSize: 16, fontWeight: 600 }}
+                    />
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>
+                    Check it against the receipt — correct it if wrong.
+                  </div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                    <button onClick={saveEditedTotal} style={{ flex: 1, background: "#111111", borderRadius: 12, padding: 12, color: "#fff", fontWeight: 600 }}>
+                      Save
+                    </button>
+                    <button onClick={resetScan} className="secondary" style={{ flex: 1, background: "#eceafb", color: "#6c5ce7", borderRadius: 12, padding: 12, fontWeight: 600 }}>
+                      Re-scan
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <button onClick={resetScan} style={{ width: "100%", marginTop: 4, background: "#111111", borderRadius: 12, padding: 14, color: "#fff", fontWeight: 600 }}>
                 Done
               </button>
             </div>
@@ -679,60 +729,143 @@ export default function App() {
         </div>
       )}
 
+      {/* Settings page */}
+      {activeTab === "settings" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Settings</h2>
+
+          <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>
+            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 10 }}>Currency</div>
+            <select
+              value={currency}
+              onChange={(e) => {
+                setCurrency(e.target.value);
+                localStorage.setItem("currency", e.target.value);
+              }}
+              style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "#fff", fontWeight: 600 }}
+            >
+              <option value="$">Dollar ($)</option>
+              <option value="RM">Ringgit (RM)</option>
+            </select>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10 }}>
+              Affects all amounts shown across the app.
+            </div>
+          </div>
+
+          <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>
+            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 6 }}>About</div>
+            <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              Receipt Tracker — scan receipts, ask about your spending, detect unusual charges, all with AI.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Receipts page */}
       {activeTab === "receipts" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Receipts</h2>
-            <button
-              onClick={() => fileRef.current?.click()}
-              style={{
-                background: "#111111",
-                borderRadius: "50%",
-                width: 44,
-                height: 44,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#ffffff"
-              }}
-            >
-              <Plus size={20} strokeWidth={2} />
-            </button>
+            {receipts.length > 0 && (
+              <button
+                onClick={() => setSelectMode(!selectMode)}
+                style={{
+                  background: selectMode ? "#111111" : "#eceafb",
+                  color: selectMode ? "#fff" : "#6c5ce7",
+                  borderRadius: 12,
+                  padding: "8px 14px",
+                  fontWeight: 600,
+                  fontSize: 13
+                }}
+              >
+                {selectMode ? "Cancel" : "Select"}
+              </button>
+            )}
           </div>
+
+          {selectMode && (
+            <div style={{ background: "#fff4f0", border: "1px solid #ffd8cc", borderRadius: 12, padding: 12 }}>
+              <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 8 }}>
+                {selectedForDelete.length === 0
+                  ? "Tap receipts to select"
+                  : `${selectedForDelete.length} selected`}
+              </div>
+              <button
+                onClick={deleteSelectedReceipts}
+                disabled={selectedForDelete.length === 0}
+                style={{
+                  width: "100%",
+                  background: "#ff6b6b",
+                  color: "#fff",
+                  borderRadius: 12,
+                  padding: 12,
+                  fontWeight: 600,
+                  opacity: selectedForDelete.length === 0 ? 0.5 : 1
+                }}
+              >
+                Delete selected
+              </button>
+            </div>
+          )}
 
           {receipts.length === 0 && (
             <div style={{ background: "var(--card)", borderRadius: 20, padding: 32, textAlign: "center", color: "var(--text-muted)", fontSize: 14 }}>
-              No receipts yet. Tap + or the Scan card to upload one.
+              No receipts yet. Scan a receipt to add one.
             </div>
           )}
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            {receipts.map((r) => (
-              <button
-                key={r.id}
-                className="action-card"
-                onClick={() => setSelectedReceipt(r)}
-                style={{
-                  background: "var(--card)",
-                  borderRadius: 16,
-                  overflow: "hidden",
-                  padding: 0,
-                  textAlign: "left",
-                  boxShadow: "0 2px 10px rgba(0,0,0,0.03)"
-                }}
-              >
-                <img
-                  src={`${API}${r.image_url}`}
-                  alt={r.filename}
-                  style={{ width: "100%", height: 140, objectFit: "cover", display: "block" }}
-                />
-                <div style={{ padding: 10 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>{r.filename}</div>
-                  <div style={{ color: "var(--text-muted)", fontSize: 11 }}>{new Date(r.uploaded_at).toLocaleDateString()}</div>
-                </div>
-              </button>
-            ))}
+            {receipts.map((r) => {
+              const isSel = selectedForDelete.includes(r.id);
+              return (
+                <button
+                  key={r.id}
+                  className="action-card"
+                  onClick={() => selectMode
+                    ? toggleSelectReceipt(r.id)
+                    : setSelectedReceipt(r)}
+                  style={{
+                    background: "var(--card)",
+                    borderRadius: 16,
+                    overflow: "hidden",
+                    padding: 0,
+                    textAlign: "left",
+                    boxShadow: "0 2px 10px rgba(0,0,0,0.03)",
+                    border: isSel ? "3px solid #ff6b6b" : "3px solid transparent"
+                  }}
+                >
+                  {isSel && (
+                    <div style={{
+                      position: "absolute",
+                      top: 8,
+                      right: 8,
+                      background: "#ff6b6b",
+                      color: "#fff",
+                      borderRadius: "50%",
+                      width: 24,
+                      height: 24,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontWeight: 700,
+                      fontSize: 12,
+                      zIndex: 2
+                    }}>
+                      ✓
+                    </div>
+                  )}
+                  <img
+                    src={`${API_ORIGIN}${r.image_url}`}
+                    alt={r.filename}
+                    style={{ width: "100%", height: 140, objectFit: "cover", display: "block" }}
+                  />
+                  <div style={{ padding: 10 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{r.filename}</div>
+                    <div style={{ color: "var(--text-muted)", fontSize: 11 }}>{new Date(r.uploaded_at).toLocaleDateString()}</div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
 
           {selectedReceipt && (
@@ -760,7 +893,7 @@ export default function App() {
                 }}
               >
                 <img
-                  src={`${API}${selectedReceipt.image_url}`}
+                  src={`${API_ORIGIN}${selectedReceipt.image_url}`}
                   alt={selectedReceipt.filename}
                   style={{ width: "100%", borderRadius: 12 }}
                 />
@@ -781,7 +914,7 @@ export default function App() {
       <input
         ref={fileRef}
         type="file"
-        accept="image/*"
+        accept="image/*,.pdf"
         style={{ display: "none" }}
         onChange={(e) => {
           uploadReceipt(e.target.files[0]);
@@ -821,6 +954,18 @@ export default function App() {
             color: activeTab === "home" ? "#000000" : "#666666"
           }}>
             <Layers size={20} strokeWidth={2} />
+          </button>
+          <button onClick={() => setActiveTab("scan")} style={{
+            background: activeTab === "scan" ? "#ffffff" : "transparent",
+            borderRadius: "50%",
+            width: 44,
+            height: 44,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: activeTab === "scan" ? "#000000" : "#666666"
+          }}>
+            <Plus size={20} strokeWidth={2} />
           </button>
           <button onClick={() => setActiveTab("search")} style={{
             background: activeTab === "search" ? "#ffffff" : "transparent",

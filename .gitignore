@@ -7,6 +7,7 @@ __pycache__/
 *.pyc
 backend/receipts.db
 backend/uploads/
+backend/app/uploads/
 
 # OS
 .DS_Store

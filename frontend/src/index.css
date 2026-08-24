@@ -49,3 +49,41 @@ input {
     opacity: 1;
   }
 }
+
+.scan-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--orange), transparent);
+  box-shadow: 0 0 12px var(--orange);
+  animation: scanMove 1.8s ease-in-out infinite;
+}
+
+@keyframes scanMove {
+  0% {
+    top: 4%;
+  }
+  50% {
+    top: 94%;
+  }
+  100% {
+    top: 4%;
+  }
+}
+
+.doc-snap {
+  animation: snapIn 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+@keyframes snapIn {
+  from {
+    transform: scale(0.92) rotate(-1deg);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}

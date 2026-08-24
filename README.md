@@ -10,7 +10,8 @@ Built with **React + Vite** (frontend), **FastAPI + SQLite** (backend), **Tesser
 
 | Feature | How it works |
 | --- | --- |
-| 📸 **Scan a receipt** | Take a photo or pick from gallery → Tesseract OCR reads the text → DeepSeek corrects OCR errors and extracts clean data (merchant, total, date, category, items) |
+| 📸 **Scan a receipt** | Take a photo (camera or gallery) → a scanning animation plays → the image is auto-cropped, centered on a white "document" page with a shadow → Tesseract OCR reads the text → DeepSeek corrects OCR errors and extracts clean data (merchant, total, date, category, items) |
+| 📄 **Document-style preview** | Receipts are automatically cropped to their content and centered on a white page — no more skewed, off-center photos. A **Done** button resets the scan page for the next receipt |
 | 🗂️ **Receipt gallery** | Every uploaded receipt image is stored and viewable, with its OCR text |
 | 🔍 **Ask AI** | Type a question in plain English ("how much did I spend on dining in May?") — DeepSeek answers using your real transactions |
 | 📊 **Dashboard** | Spending today / this week / this month, a monthly bar chart, breakdown by category, and an **AI-written summary** of your spending habits |
@@ -120,7 +121,7 @@ On macOS: `brew install tesseract`
 
 ## 🧠 How the pipeline works
 
-1. **Scan:** image → Tesseract raw text → DeepSeek returns clean structured JSON (fixes "1674" → 16.74, "CORNERCAFE" → "Corner Cafe").
+1. **Scan:** camera/gallery photo → scanning animation → the frontend auto-crops the image and centers it on a white "document" page (canvas-based) → Tesseract extracts raw text → DeepSeek returns clean structured JSON (fixes "1674" → 16.74, "CORNERCAFE" → "Corner Cafe") → the original file is still what gets OCR'd.
 2. **Ask:** your question + up to 200 real transactions sent to DeepSeek → a natural-language answer with matching items.
 3. **Anomalies:** IQR detector flags outliers per category → DeepSeek reviews each candidate against category context (median/max) and confirms or rejects it with a reason.
 4. **Dashboard:** aggregates real data, and DeepSeek writes a concise summary of your habits and month-over-month trends.

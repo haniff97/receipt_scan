@@ -32,6 +32,7 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [result, setResult] = useState(null);
   const [showAlerts, setShowAlerts] = useState(false);
+  const [processing, setProcessing] = useState(false);
   const [showNotify, setShowNotify] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [receiptCategory, setReceiptCategory] = useState("groceries");
@@ -89,17 +90,96 @@ export default function App() {
     const category = receiptCategory === "__other__"
       ? (customCategory.trim() || "other")
       : receiptCategory;
-    setReceiptPreview(URL.createObjectURL(file));
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("category", category);
+    setMsg("");
+    setProcessing(true);
     try {
+      const styled = await toDocumentImage(file);
+      setReceiptPreview(styled);
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("category", category);
       const r = await axios.post(`${API}/receipts/upload`, fd);
       setMsg(`Uploaded ${r.data.filename} — ${r.data.transactions_created} transaction created.`);
       refresh();
     } catch (err) {
       setMsg(err.response?.data?.detail || "Upload failed.");
+    } finally {
+      setProcessing(false);
     }
+  };
+
+  const toDocumentImage = (file) => new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const maxW = 800;
+        const scale = Math.min(1, maxW / img.width);
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+
+        const src = document.createElement("canvas");
+        src.width = w;
+        src.height = h;
+        const sctx = src.getContext("2d");
+        sctx.drawImage(img, 0, 0, w, h);
+
+        const { data } = sctx.getImageData(0, 0, w, h);
+        let minX = w, minY = h, maxX = 0, maxY = 0;
+        for (let y = 0; y < h; y += 3) {
+          for (let x = 0; x < w; x += 3) {
+            const i = (y * w + x) * 4;
+            const lum = (data[i] + data[i + 1] + data[i + 2]) / 3;
+            if (lum < 215) {
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            }
+          }
+        }
+
+        if (maxX <= minX || maxY <= minY) {
+          URL.revokeObjectURL(url);
+          resolve(url);
+          return;
+        }
+
+        const pad = 24;
+        const bw = Math.min(w, maxX - minX + pad * 2);
+        const bh = Math.min(h, maxY - minY + pad * 2);
+        const sx = Math.max(0, Math.floor((maxX + minX) / 2 - bw / 2));
+        const sy = Math.max(0, Math.floor((maxY + minY) / 2 - bh / 2));
+
+        const doc = document.createElement("canvas");
+        doc.width = Math.round(bw);
+        doc.height = Math.round(bh);
+        const dctx = doc.getContext("2d");
+        dctx.fillStyle = "#ffffff";
+        dctx.fillRect(0, 0, doc.width, doc.height);
+        dctx.shadowColor = "rgba(0,0,0,0.18)";
+        dctx.shadowBlur = 16;
+        dctx.shadowOffsetY = 6;
+        dctx.drawImage(src, sx, sy, bw, bh, 0, 0, doc.width, doc.height);
+        dctx.shadowColor = "transparent";
+        dctx.drawImage(src, sx, sy, bw, bh, 0, 0, doc.width, doc.height);
+
+        URL.revokeObjectURL(url);
+        resolve(doc.toDataURL("image/png"));
+      } catch (e) {
+        reject(e);
+      }
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+
+  const resetScan = () => {
+    setReceiptPreview(null);
+    setMsg("");
+    setProcessing(false);
+    setReceiptCategory("groceries");
+    setCustomCategory("");
   };
 
   const $ = (n) => (n === null || n === undefined ? "-" : `$${Number(n).toFixed(2)}`);
@@ -454,10 +534,33 @@ export default function App() {
             )}
           </div>
 
-          {receiptPreview && (
+          {processing && (
+            <div style={{
+              background: "var(--card)",
+              borderRadius: 20,
+              padding: 24,
+              textAlign: "center",
+              boxShadow: "0 2px 10px rgba(0,0,0,0.03)",
+              position: "relative",
+              overflow: "hidden"
+            }}>
+              <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 12 }}>Scanning receipt…</div>
+              <div style={{ position: "relative", width: "100%", height: 160, background: "#f7f7f9", borderRadius: 12, overflow: "hidden" }}>
+                <div className="scan-line" />
+              </div>
+              <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 12 }}>Detecting edges, centering, and reading text…</div>
+            </div>
+          )}
+
+          {receiptPreview && !processing && (
             <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>
-              <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>Preview</div>
-              <img src={receiptPreview} alt="receipt preview" style={{ width: "100%", borderRadius: 12 }} />
+              <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>Scanned document</div>
+              <div className="doc-snap" style={{ display: "flex", justifyContent: "center", padding: 8, background: "#f7f7f9", borderRadius: 12 }}>
+                <img src={receiptPreview} alt="scanned receipt" style={{ maxWidth: "100%", maxHeight: 320, borderRadius: 4 }} />
+              </div>
+              <button onClick={resetScan} style={{ width: "100%", marginTop: 12, background: "#111111", borderRadius: 12, padding: 14, color: "#fff", fontWeight: 600 }}>
+                Done
+              </button>
             </div>
           )}
 

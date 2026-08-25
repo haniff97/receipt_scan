@@ -140,6 +140,43 @@ def summarize_spending(dashboard_data, currency="$", lang="en"):
     return _chat(messages, temperature=0.5)
 
 
+def build_compact_payload(transactions):
+    """Summarize transactions into a compact dict for the LLM.
+
+    Instead of sending up to 200 raw rows, send aggregated totals per category
+    and per month, plus the most recent merchants — far fewer tokens.
+    """
+    if not transactions:
+        return {"count": 0, "total_spent": 0.0, "by_category": {}, "monthly": {}, "recent": []}
+
+    by_cat = {}
+    monthly = {}
+    total = 0.0
+    for t in transactions:
+        amt = float(t["amount"] or 0)
+        total += amt
+        by_cat[t["category"]] = by_cat.get(t["category"], 0.0) + amt
+        month = str(t["date"])[:7]  # YYYY-MM
+        monthly[month] = monthly.get(month, 0.0) + amt
+
+    recent = []
+    for t in transactions[:15]:
+        recent.append({
+            "date": str(t["date"])[:10],
+            "merchant": t["merchant"],
+            "amount": round(float(t["amount"] or 0), 2),
+            "category": t["category"],
+        })
+
+    return {
+        "count": len(transactions),
+        "total_spent": round(total, 2),
+        "by_category": {k: round(v, 2) for k, v in by_cat.items()},
+        "monthly": {k: round(v, 2) for k, v in sorted(monthly.items())},
+        "recent": recent,
+    }
+
+
 def answer_question(question, transactions, lang="en"):
     """Answer a natural-language question using real transaction data via DeepSeek.
 
@@ -151,17 +188,17 @@ def answer_question(question, transactions, lang="en"):
         if lang == "ms"
         else "Reply in English."
     )
-    sample = transactions[:200]
+    compact = build_compact_payload(transactions)
     messages = [
         {
             "role": "system",
             "content": (
                 f"{lang_instruction} You are a personal finance assistant with access to the user's "
-                "transactions. Answer their question accurately using the data. "
+                "transactions (aggregated). Answer their question accurately using the data. "
                 "Return ONLY valid JSON with keys: "
                 '"answer" (string, 1-2 sentences with RM amounts), '
                 '"filters" (object describing what you filtered by), '
-                '"transactions" (array of up to 10 matching items, each '
+                '"transactions" (array of up to 10 matching items from the "recent" data, each '
                 '{"date","merchant","amount","category"}). '
                 'If no transactions match, set "transactions" to [] and say so in the answer.'
             ),
@@ -170,8 +207,7 @@ def answer_question(question, transactions, lang="en"):
             "role": "user",
             "content": (
                 f"QUESTION: {question}\n\n"
-                f"TRANSACTIONS (date ISO, merchant, amount, category):\n"
-                f"{json.dumps(sample, default=str)}"
+                f"TRANSACTION SUMMARY:\n{json.dumps(compact, default=str)}"
             ),
         },
     ]

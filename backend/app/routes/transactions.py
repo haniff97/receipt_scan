@@ -11,6 +11,9 @@ from ..schemas import TransactionCreate, TransactionOut
 
 router = APIRouter()
 
+# Cache for AI dashboard summaries: key = (data_fingerprint, currency, lang)
+_summary_cache = {}
+
 
 @router.get("/transactions", response_model=list[TransactionOut])
 def list_transactions(
@@ -150,7 +153,22 @@ def dashboard_summary(currency: str = "$", lang: str = "en", db: Session = Depen
         "monthly": monthly,
         "by_category": by_cat,
     }
+
+    # Only regenerate when new data arrives (new receipt), not on every dashboard open.
+    count = len(rows)
+    last_date = max((r[0] for r in rows), default=None)
+    fingerprint = (count, str(last_date))
+    cache_key = (fingerprint, currency, lang)
+
+    if cache_key in _summary_cache:
+        return {"summary": _summary_cache[cache_key], "cached": True}
+
     summary = summarize_spending(data, currency=currency, lang=lang)
+    if summary:
+        _summary_cache[cache_key] = summary
+        return {"summary": summary, "cached": False}
+
     return {
-        "summary": summary or "No DeepSeek API key set. Add one to enable AI summaries.",
+        "summary": "No DeepSeek API key set. Add one to enable AI summaries.",
+        "cached": False,
     }

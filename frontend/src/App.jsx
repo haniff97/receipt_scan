@@ -332,7 +332,7 @@ export default function App() {
       margin: "0 auto",
       minHeight: "100vh",
       background: "var(--bg)",
-      padding: "24px 20px 100px",
+      padding: "0 20px 100px",
       display: "flex",
       flexDirection: "column",
       gap: 24,
@@ -378,7 +378,7 @@ export default function App() {
       )}
 
       {/* Header */}
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "32px" }}>
+      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <button onClick={() => setActiveTab("settings")} style={{ color: "var(--text-main)", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <Settings size={24} strokeWidth={1.5} />
         </button>

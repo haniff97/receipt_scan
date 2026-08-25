@@ -332,7 +332,7 @@ export default function App() {
       margin: "0 auto",
       minHeight: "100vh",
       background: "var(--bg)",
-      padding: "48px 20px 100px",
+      padding: "16px 20px 100px",
       display: "flex",
       flexDirection: "column",
       gap: 24,

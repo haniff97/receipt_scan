@@ -16,7 +16,8 @@ register_heif_opener()
 
 def deskew_bytes(image_bytes: bytes) -> bytes:
     """Deskew an image (JPEG/PNG/WebP/HEIC/etc.) and return re-encoded PNG bytes."""
-    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    img = Image.open(io.BytesIO(image_bytes))
+    img = ImageOps.exif_transpose(img).convert("RGB")
     arr = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
     corrected = deskew(arr)
     out = cv2.cvtColor(corrected, cv2.COLOR_BGR2RGB)
@@ -38,8 +39,12 @@ def _preprocess(img: Image.Image) -> Image.Image:
 
 
 def image_from_bytes(image_bytes: bytes) -> Image.Image:
-    """Open an image file (JPEG/PNG/WebP/HEIC/etc.) and return an RGB PIL image."""
+    """Open an image file (JPEG/PNG/WebP/HEIC/etc.) and return an RGB PIL image.
+
+    Applies the EXIF orientation tag so portrait photos aren't read sideways.
+    """
     img = Image.open(io.BytesIO(image_bytes))
+    img = ImageOps.exif_transpose(img)
     return img.convert("RGB")
 
 

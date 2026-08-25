@@ -15,7 +15,9 @@ import {
   Plus,
   AlertTriangle,
   ReceiptText,
-  Download
+  Download,
+  Pencil,
+  Trash2
 } from "lucide-react";
 
 const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api";
@@ -52,8 +54,13 @@ export default function App() {
   const [confirming, setConfirming] = useState(false);
   const [editTotal, setEditTotal] = useState(null);
   const [editTxId, setEditTxId] = useState(null);
+  const [manualMerchant, setManualMerchant] = useState("");
+  const [manualCategory, setManualCategory] = useState("groceries");
+  const [manualDate, setManualDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [msg, setMsg] = useState("");
   const [feedbackText, setFeedbackText] = useState("");
+  const [editingTx, setEditingTx] = useState(null);
+  const [editForm, setEditForm] = useState({ merchant: "", amount: "", category: "", date: "" });
   const searchRef = useRef(null);
   const fileRef = useRef(null);
   const cameraRef = useRef(null);
@@ -139,11 +146,18 @@ export default function App() {
     try {
       const txs = transactions;
       const cur = txs.find((x) => x.id === editTxId);
+      const isManual = !aiEnabled;
       await axios.patch(`${API}/transactions/${editTxId}`, {
-        date: cur ? cur.date : new Date().toISOString(),
+        date: isManual
+          ? new Date(manualDate || new Date().toISOString().slice(0, 10)).toISOString()
+          : (cur ? cur.date : new Date().toISOString()),
         amount: parseFloat(editTotal),
-        merchant: cur ? cur.merchant : "Unknown",
-        category: cur ? cur.category : (receiptCategory === "__other__" ? (customCategory.trim() || "other") : receiptCategory),
+        merchant: isManual
+          ? (manualMerchant.trim() || "Unknown")
+          : (cur ? cur.merchant : "Unknown"),
+        category: isManual
+          ? (manualCategory === "__other__" ? (customCategory.trim() || "other") : manualCategory)
+          : (cur ? cur.category : (receiptCategory === "__other__" ? (customCategory.trim() || "other") : receiptCategory)),
         description: cur ? cur.description : "",
       });
       setConfirming(false);
@@ -175,6 +189,44 @@ export default function App() {
     }
   };
 
+  const startEditTx = (t) => {
+    setEditingTx(t);
+    setEditForm({
+      merchant: t.merchant || "",
+      amount: t.amount != null ? String(t.amount) : "",
+      category: t.category || "",
+      date: t.date ? t.date.slice(0, 10) : "",
+    });
+  };
+
+  const saveEditTx = async () => {
+    if (!editingTx) return;
+    try {
+      await axios.patch(`${API}/transactions/${editingTx.id}`, {
+        date: editForm.date ? new Date(editForm.date).toISOString() : editingTx.date,
+        amount: parseFloat(editForm.amount),
+        merchant: editForm.merchant || "Unknown",
+        category: editForm.category || "other",
+        description: editingTx.description || "",
+      });
+      setEditingTx(null);
+      setMsg(t("total_updated"));
+      await refresh();
+    } catch (err) {
+      setMsg(err.response?.data?.detail || t("delete_failed"));
+    }
+  };
+
+  const deleteTransaction = async (id) => {
+    try {
+      await axios.delete(`${API}/transactions/${id}`);
+      setMsg(t("deleted"));
+      await refresh();
+    } catch (err) {
+      setMsg(err.response?.data?.detail || t("delete_failed"));
+    }
+  };
+
   const resetScan = () => {
     setReceiptPreview(null);
     setReceiptOriginal(null);
@@ -185,6 +237,9 @@ export default function App() {
     setProcessing(false);
     setReceiptCategory("groceries");
     setCustomCategory("");
+    setManualMerchant("");
+    setManualCategory("groceries");
+    setManualDate(new Date().toISOString().slice(0, 10));
   };
 
   const $ = (n) => {
@@ -236,8 +291,23 @@ export default function App() {
 
   const exportCsv = () => {
     if (transactions.length === 0) return;
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
+    startOfWeek.setHours(0, 0, 0, 0);
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const data = transactions.filter((t) => {
+      const d = new Date(t.date);
+      if (receiptFilter === "day" && d.toDateString() !== now.toDateString()) return false;
+      if (receiptFilter === "week" && d < startOfWeek) return false;
+      if (receiptFilter === "month" && d < startOfMonth) return false;
+      return true;
+    });
+
+    if (data.length === 0) return;
     const header = "Date,Merchant,Category,Amount,Description";
-    const rows = transactions.map((t) =>
+    const rows = data.map((t) =>
       [
         t.date.slice(0, 10),
         `"${(t.merchant || "").replace(/"/g, '""')}"`,
@@ -719,7 +789,7 @@ export default function App() {
               {confirming && (
                 <div style={{ background: "#f4f4f6", borderRadius: 12, padding: 14, marginTop: 4 }}>
                   <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>{t("confirm_total")}</div>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
                     <span style={{ fontSize: 16, fontWeight: 700 }}>{currency === "RM" ? "RM" : "$"}</span>
                     <input
                       type="number"
@@ -730,6 +800,42 @@ export default function App() {
                       style={{ flex: 1, padding: 10, borderRadius: 10, border: "1px solid var(--border)", background: "#fff", fontSize: 16, fontWeight: 600 }}
                     />
                   </div>
+
+                  {!aiEnabled && (
+                    <>
+                      <input
+                        value={manualMerchant}
+                        onChange={(e) => setManualMerchant(e.target.value)}
+                        placeholder={t("merchant")}
+                        style={{ width: "100%", boxSizing: "border-box", padding: 10, borderRadius: 10, border: "1px solid var(--border)", background: "#fff", marginBottom: 8 }}
+                      />
+                      <select
+                        value={manualCategory}
+                        onChange={(e) => setManualCategory(e.target.value)}
+                        style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid var(--border)", background: "#fff", marginBottom: 8 }}
+                      >
+                        {["groceries", "dining", "transport", "shopping", "utilities", "entertainment", "health", "travel"].map((c) => (
+                          <option key={c} value={c}>{catName(c)}</option>
+                        ))}
+                        <option value="__other__">{t("other")}</option>
+                      </select>
+                      {manualCategory === "__other__" && (
+                        <input
+                          value={customCategory}
+                          onChange={(e) => setCustomCategory(e.target.value)}
+                          placeholder={t("type_new_category")}
+                          style={{ width: "100%", boxSizing: "border-box", padding: 10, borderRadius: 10, border: "1px solid var(--border)", background: "#fff", marginBottom: 8 }}
+                        />
+                      )}
+                      <input
+                        type="date"
+                        value={manualDate}
+                        onChange={(e) => setManualDate(e.target.value)}
+                        style={{ width: "100%", boxSizing: "border-box", padding: 10, borderRadius: 10, border: "1px solid var(--border)", background: "#fff", marginBottom: 8 }}
+                      />
+                    </>
+                  )}
+
                   <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>
                     {t("check_against_receipt")}
                   </div>
@@ -856,10 +962,96 @@ export default function App() {
             <div style={{ maxHeight: 300, overflowY: "auto" }}>
               {dashFiltered.length === 0 && <div style={{ color: "var(--text-muted)", fontSize: 13 }}>{t("no_transactions_match")}</div>}
               {dashFiltered.map((t) => (
-                <div key={t.id} style={{ fontSize: 13, padding: "6px 0", borderTop: "1px solid var(--border)" }}>
-                {t.date.slice(0, 10)} · {t.merchant} · <strong>{$(t.amount)}</strong> <span style={{ color: "var(--text-muted)" }}>({catName(t.category)})</span>
+                <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, padding: "6px 0", borderTop: "1px solid var(--border)" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {t.date.slice(0, 10)} · {t.merchant} · <strong>{$(t.amount)}</strong> <span style={{ color: "var(--text-muted)" }}>({catName(t.category)})</span>
+                  </div>
+                  <button onClick={() => startEditTx(t)} style={{ background: "none", padding: 4, color: "var(--text-muted)", display: "flex", alignItems: "center" }}>
+                    <Pencil size={14} />
+                  </button>
+                  <button onClick={() => deleteTransaction(t.id)} style={{ background: "none", padding: 4, color: "#ff6b6b", display: "flex", alignItems: "center" }}>
+                    <Trash2 size={14} />
+                  </button>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit transaction modal */}
+      {editingTx && (
+        <div
+          onClick={() => setEditingTx(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 100,
+            padding: 20
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: 20,
+              width: "100%",
+              maxWidth: 360,
+              padding: 20,
+              display: "flex",
+              flexDirection: "column",
+              gap: 10
+            }}
+          >
+            <div style={{ fontWeight: 700, fontSize: 16 }}>{t("edit_transaction")}</div>
+
+            <label style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("merchant")}</label>
+            <input
+              value={editForm.merchant}
+              onChange={(e) => setEditForm((f) => ({ ...f, merchant: e.target.value }))}
+              style={{ padding: 10, borderRadius: 10, border: "1px solid var(--border)", fontFamily: "inherit" }}
+            />
+
+            <label style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("amount")}</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={editForm.amount}
+              onChange={(e) => setEditForm((f) => ({ ...f, amount: e.target.value }))}
+              style={{ padding: 10, borderRadius: 10, border: "1px solid var(--border)", fontFamily: "inherit" }}
+            />
+
+            <label style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("category")}</label>
+            <select
+              value={editForm.category}
+              onChange={(e) => setEditForm((f) => ({ ...f, category: e.target.value }))}
+              style={{ padding: 10, borderRadius: 10, border: "1px solid var(--border)", fontFamily: "inherit", background: "#fff" }}
+            >
+              {["groceries", "dining", "transport", "shopping", "utilities", "entertainment", "health", "travel", "other"].map((c) => (
+                <option key={c} value={c}>{catName(c)}</option>
+              ))}
+            </select>
+
+            <label style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("date")}</label>
+            <input
+              type="date"
+              value={editForm.date}
+              onChange={(e) => setEditForm((f) => ({ ...f, date: e.target.value }))}
+              style={{ padding: 10, borderRadius: 10, border: "1px solid var(--border)", fontFamily: "inherit" }}
+            />
+
+            <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+              <button onClick={saveEditTx} style={{ flex: 1, background: "#111111", color: "#fff", borderRadius: 12, padding: 12, fontWeight: 600 }}>
+                {t("save")}
+              </button>
+              <button onClick={() => setEditingTx(null)} className="secondary" style={{ flex: 1, background: "#eceafb", color: "#6c5ce7", borderRadius: 12, padding: 12, fontWeight: 600 }}>
+                {t("cancel")}
+              </button>
             </div>
           </div>
         </div>

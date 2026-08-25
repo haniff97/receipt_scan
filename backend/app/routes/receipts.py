@@ -7,6 +7,7 @@ from pillow_heif import register_heif_opener
 from sqlalchemy.orm import Session
 
 from ..deepseek import enhance_ocr
+from ..gemini import extract_receipt
 from ..database import get_db
 from ..models import Receipt, Transaction
 from ..schemas import ReceiptCreateResponse
@@ -31,12 +32,20 @@ async def upload_receipt(
 
     if is_pdf_file:
         display_bytes = image_bytes
-        text = ocr_image(image_bytes)
     else:
         try:
             display_bytes = deskew_bytes(image_bytes)
         except Exception:
             display_bytes = image_bytes
+
+    # 1) PRIMARY: Gemini vision reads the image directly (most accurate)
+    ai = None
+    if not is_pdf_file:
+        ai = extract_receipt(image_bytes)
+
+    # 2) FALLBACK: tesseract OCR + DeepSeek cleanup
+    text = ""
+    if ai is None:
         try:
             text = ocr_image(display_bytes)
         except Exception as e:
@@ -54,9 +63,10 @@ async def upload_receipt(
                    f"Scan a different receipt.",
         )
 
-    parsed = parse_receipt(text)
+    parsed = parse_receipt(text) if text else {"total": None, "merchant": "Unknown", "date": None}
 
-    ai = enhance_ocr(text)
+    if ai is None:
+        ai = enhance_ocr(text)
     if ai and ai.get("total"):
         total = float(ai["total"])
         merchant = ai.get("merchant") or "Unknown"

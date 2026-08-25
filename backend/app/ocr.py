@@ -83,21 +83,31 @@ def parse_receipt(text: str) -> dict:
     merchant = lines[0][:200] if lines else "Unknown"
 
     total = None
+    # Total keywords — the number right after one of these is the final total.
     total_re = re.compile(
-        r"(?:total|amount|grand total)[:$]?\s*[\$€£]?\s*(\d+(?:[.,]\d{2})?)",
+        r"(?:\btotal\b|\bgrand total\b|\bamount\b|\btotal\s*due\b|\bbayaran\b|\bjumlah\b|\bkeseluruhan\b)"
+        r"[^0-9]*([0-9][0-9.,\s]*[0-9])",
         re.IGNORECASE,
     )
     for line in lines:
         m = total_re.search(line)
         if m:
-            raw = m.group(1)
-            if "." in raw or "," in raw:
-                total = float(raw.replace(",", "."))
-            else:
-                total = float(raw)
+            raw = re.sub(r"[^0-9.,]", "", m.group(1))
+            try:
+                if "." in raw or "," in raw:
+                    total = float(raw.replace(",", "").replace(".", ".")) if raw.count(".") == 1 else float(raw.replace(",", "."))
+                    # handle "43,46" style
+                    if "," in raw and "." not in raw:
+                        total = float(raw.replace(",", "."))
+                else:
+                    total = float(raw)
                 if total >= 100:
                     total /= 100  # "1674" => 16.74
-            break
+                total = round(total, 2)
+            except ValueError:
+                total = None
+            if total:
+                break
 
     date = None
     date_re = re.compile(

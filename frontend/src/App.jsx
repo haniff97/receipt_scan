@@ -110,6 +110,7 @@ export default function App() {
     if (!query.trim()) return;
     const r = await axios.get(`${API}/query`, { params: { q: query, lang } });
     setResult(r.data);
+    setActiveTab("ai");
   };
 
   const uploadReceipt = async (file) => {
@@ -572,23 +573,6 @@ export default function App() {
         />
 
       </form>
-
-      {/* Query result — homepage only */}
-      {result && (
-        <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.06)" }}>
-          <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 6 }}>{result.answer}</div>
-          <div style={{ color: "var(--text-muted)", fontSize: 12, marginBottom: 8 }}>
-            Filters: {Object.keys(result.filters).length ? JSON.stringify(result.filters) : "none"}
-          </div>
-          <div style={{ maxHeight: 400, overflowY: "auto", paddingRight: 8 }}>
-            {(result.transactions || []).map((t, i) => (
-              <div key={i} style={{ fontSize: 13, padding: "6px 0", borderTop: "1px solid var(--border)" }}>
-                {t.date.slice(0, 10)} · {t.merchant} · <strong>{$(t.amount)}</strong> <span style={{ color: "var(--text-muted)" }}>({catName(t.category)})</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
         </>
       )}
 

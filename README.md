@@ -62,6 +62,14 @@ Scan/
         └── index.css
 ```
 
+## 📝 Recent Updates
+
+- **Upgraded Vision API:** Switched the default model to the latest **`gemini-3.7-flash`** for highly accurate receipt parsing (fixed a 404 error from an invalid model name).
+- **Fixed Photo Rotation (EXIF):** Uploaded phone photos are now correctly rotated and compressed (<1600px) *before* being sent to Gemini, fixing issues where sideways receipts caused bad reads.
+- **Fixed Total Calculation Bug:** Removed a bug where a 6% tax multiplier was blindly applied even when the AI had already correctly computed the sum.
+- **Fixed Duplicate Bug:** Fixed an issue where the duplicate receipt check blocked all uploads handled by Gemini (because the OCR text was empty).
+- **UI & Defaults:** Set Ringgit (RM) as the default currency. The Receipt Gallery modal now has consistent styling with a sticky "Close" button at the top for long receipts.
+
 ## 🚀 Getting started
 
 > **Note:** Because sensitive and machine-specific files (like `.env`, `.venv/`, and the local database) are safely ignored by git, you will need to re-create the environment when setting up on a new device or deployment. Follow these steps to generate them freshly!

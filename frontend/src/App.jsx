@@ -330,9 +330,9 @@ export default function App() {
     <div style={{
       maxWidth: 420,
       margin: "0 auto",
-      minHeight: "100vh",
+      minHeight: "100dvh",
       background: "var(--bg)",
-      padding: "16px 20px 100px",
+      padding: "calc(env(safe-area-inset-top, 24px) + 16px) 20px 100px",
       display: "flex",
       flexDirection: "column",
       gap: 24,

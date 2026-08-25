@@ -24,16 +24,18 @@ PROMPT = (
     "Read every line carefully.\n"
     "CRITICAL — the 'total' MUST be the FINAL GRAND TOTAL the customer pays, NOT the subtotal.\n"
     "Rules for the 'total':\n"
-    "1. NEVER return SUBTOTAL — ignore lines containing 'SUBTOTAL', 'Sub Total', 'Sub-total'.\n"
+    "1. NEVER use SUBTOTAL — ignore lines containing 'SUBTOTAL', 'Sub Total', 'Sub-total'.\n"
     "2. Look for the FINAL TOTAL line: TOTAL, GRAND TOTAL, TOTAL (RM), TOTAL DUE, "
-    "BAYARAN, JUMLAH, KESELURUHAN, AMOUNT DUE, NET TOTAL, 'RM' at the end of the receipt. "
+    "BAYARAN, JUMLAH, KESELURUHAN, AMOUNT DUE, NET TOTAL, or a 'RM' amount near the bottom. "
     "The total is the number on that exact line.\n"
-    "3. If a final TOTAL line exists, use its number — do NOT sum item prices.\n"
-    "4. If no TOTAL line exists, sum item prices and ADD any tax percentage shown (e.g. 6% SST).\n"
-    "5. The total is usually the LAST monetary amount printed near the bottom, after tax.\n"
-    "6. Correct any misread digits (e.g. '4346' = 43.46, '25.5' = 25.50). Round to 2 decimals.\n"
+    "3. If you SEE a printed final TOTAL line, set 'total' to that exact number and "
+    "set 'total_method' to 'printed'.\n"
+    "4. If NO printed total line exists, sum the item prices, add any tax percentage shown "
+    "(e.g. 6% SST), and set 'total_method' to 'computed'.\n"
+    "5. Correct any misread digits (e.g. '4346' = 43.46, '25.5' = 25.50). Round to 2 decimals.\n"
     f'Return ONLY valid JSON with keys: "merchant" (string), "total" (number), '
-    f'"date" (YYYY-MM-DD or null), "category" (one of: {CATEGORIES}), '
+    f'"total_method" ("printed" or "computed"), "date" (YYYY-MM-DD or null), '
+    f'"category" (one of: {CATEGORIES}), '
     f'"items" (list of {{"name", "price"}}).'
 )
 

@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 from pillow_heif import register_heif_opener
 from sqlalchemy.orm import Session
 
-from ..deepseek import enhance_ocr
+from ..deepseek import enhance_ocr, verify_and_correct_total
 from ..gemini import extract_receipt
 from ..database import get_db
 from ..models import Receipt, Transaction
@@ -68,7 +68,9 @@ async def upload_receipt(
     if ai is None:
         ai = enhance_ocr(text)
     if ai and ai.get("total"):
-        total = float(ai["total"])
+        total = verify_and_correct_total(ai)
+        if total is None:
+            total = float(ai["total"])
         merchant = ai.get("merchant") or "Unknown"
         category = ai.get("category") or category
         try:

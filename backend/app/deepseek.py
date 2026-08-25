@@ -49,14 +49,15 @@ def enhance_ocr(ocr_text):
                 "Scan every line for a final TOTAL keyword and take the number right next to it. "
                 "Look for lines like: TOTAL, GRAND TOTAL, TOTAL (RM), TOTAL DUE, NET TOTAL, "
                 "AMOUNT DUE, BAYARAN, JUMLAH, KESELURUHAN, CASH, RM (usually near the bottom). "
-                "Only a line that CONTAINS a final total keyword is the total — do NOT use item prices. "
-                "If the total keyword is present, the 'total' field MUST be the number on that exact line. "
-                "Never sum item prices when a TOTAL line exists. "
-                "If NO total keyword line exists, THEN fall back to summing item prices and adding tax. "
+                "If you SEE a printed final total line, set 'total' to that number and "
+                "'total_method' to 'printed'. "
+                "If NO printed total line exists, sum the item prices and add tax, and set "
+                "'total_method' to 'computed'. "
                 "Correct misread digits (e.g. '1674' = 16.74, '4346' = 43.46, '433' could be 43.3). "
                 "Round to 2 decimals. "
                 f"Return ONLY valid JSON with keys: "
-                f'"merchant" (string), "total" (number), "date" (YYYY-MM-DD or null), '
+                f'"merchant" (string), "total" (number), "total_method" ("printed" or "computed"), '
+                f'"date" (YYYY-MM-DD or null), '
                 f'"category" (one of: {CATEGORIES}), "items" (list of {{"name","price"}}).'
             ),
         },
@@ -70,6 +71,49 @@ def enhance_ocr(ocr_text):
         return json.loads(content[start : end + 1])
     except Exception:
         return None
+
+
+def verify_and_correct_total(ai):
+    """Validate the AI's total using the method it reported.
+
+    The AI reports 'total_method':
+      - "printed"  → it SAW a printed final total line → trust it, no correction.
+      - "computed" → it summed item prices itself → re-verify against the items.
+      - missing    → older/fallback responses → only correct if clearly subtotal.
+
+    Returns the corrected total (float) or None.
+    """
+    if not ai:
+        return None
+
+    ai_total = ai.get("total")
+    if not isinstance(ai_total, (int, float)):
+        return None
+    ai_total = float(ai_total)
+
+    method = ai.get("total_method")
+    if method == "printed":
+        return ai_total
+
+    items = ai.get("items") or []
+    prices = [
+        float(i["price"])
+        for i in items
+        if isinstance(i, dict) and isinstance(i.get("price"), (int, float)) and i["price"] > 0
+    ]
+
+    if method == "computed":
+        # AI was unsure — recompute from the items it extracted.
+        if prices:
+            return round(sum(prices) * 1.06, 2)
+        return ai_total
+
+    # Legacy fallback (no total_method): only correct if AI total clearly == item subtotal.
+    if prices:
+        subtotal = round(sum(prices), 2)
+        if abs(ai_total - subtotal) < 0.05:
+            return round(subtotal * 1.06, 2)
+    return ai_total
 
 
 def summarize_spending(dashboard_data):

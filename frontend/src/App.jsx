@@ -889,18 +889,47 @@ export default function App() {
                   borderRadius: 20,
                   maxWidth: 360,
                   width: "100%",
-                  padding: 16
+                  padding: 16,
+                  position: "relative",
+                  maxHeight: "85vh",
+                  display: "flex",
+                  flexDirection: "column"
                 }}
               >
-                <img
-                  src={`${API_ORIGIN}${selectedReceipt.image_url}`}
-                  alt={selectedReceipt.filename}
-                  style={{ width: "100%", borderRadius: 12 }}
-                />
-                <div style={{ fontWeight: 600, marginTop: 10 }}>{selectedReceipt.filename}</div>
-                <pre style={{ fontSize: 11, whiteSpace: "pre-wrap", color: "var(--text-muted)", maxHeight: 150, overflowY: "auto", fontFamily: "inherit" }}>
-                  {selectedReceipt.ocr_text}
-                </pre>
+                <button
+                  onClick={() => setSelectedReceipt(null)}
+                  style={{
+                    position: "absolute",
+                    top: 12,
+                    right: 12,
+                    zIndex: 2,
+                    background: "rgba(0,0,0,0.65)",
+                    color: "#fff",
+                    borderRadius: "50%",
+                    width: 32,
+                    height: 32,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 16,
+                    fontWeight: 700
+                  }}
+                >
+                  ✕
+                </button>
+                <div style={{ fontWeight: 600, marginBottom: 8, paddingRight: 36 }}>
+                  {selectedReceipt.filename}
+                </div>
+                <div style={{ overflowY: "auto", flex: 1 }}>
+                  <img
+                    src={`${API_ORIGIN}${selectedReceipt.image_url}`}
+                    alt={selectedReceipt.filename}
+                    style={{ width: "100%", borderRadius: 12 }}
+                  />
+                  <pre style={{ fontSize: 11, whiteSpace: "pre-wrap", color: "var(--text-muted)", maxHeight: 150, overflowY: "auto", fontFamily: "inherit" }}>
+                    {selectedReceipt.ocr_text}
+                  </pre>
+                </div>
                 <button style={{ width: "100%", marginTop: 8 }} onClick={() => setSelectedReceipt(null)}>Close</button>
               </div>
             </div>

@@ -9,7 +9,6 @@ import {
   ExternalLink, 
   Globe, 
   Search, 
-  Mic, 
   Layers, 
   Sparkles, 
   Camera,
@@ -501,9 +500,7 @@ export default function App() {
             color: "var(--text-main)"
           }}
         />
-        <button type="submit" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <Mic size={20} color="var(--text-muted)" />
-        </button>
+
       </form>
 
       {/* Query result — homepage only */}
@@ -554,9 +551,7 @@ export default function App() {
                 color: "var(--text-main)"
               }}
             />
-            <button type="submit" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <Mic size={20} color="var(--text-muted)" />
-            </button>
+
           </form>
 
           {result && (
@@ -876,7 +871,7 @@ export default function App() {
           <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>{t("settings")}</h2>
 
           <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>
-            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 10 }}>Language / Bahasa</div>
+            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 10 }}>{t("language")}</div>
             <select
               value={lang}
               onChange={(e) => {
@@ -900,8 +895,8 @@ export default function App() {
               }}
               style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "#fff", fontWeight: 600 }}
             >
-              <option value="$">Dollar ($)</option>
               <option value="RM">Ringgit (RM)</option>
+              <option value="$">Dollar ($)</option>
             </select>
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10 }}>
               {t("affects_amounts")}

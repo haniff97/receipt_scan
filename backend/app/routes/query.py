@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -8,9 +9,24 @@ from ..nlq import run_query
 
 router = APIRouter()
 
+# Cache for Ask AI answers: key = (question, lang, data_fingerprint)
+_query_cache = {}
+
+
+def _data_fingerprint(db: Session):
+    count = db.query(func.count(Transaction.id)).scalar() or 0
+    last = db.query(func.max(Transaction.date)).scalar()
+    return (count, str(last))
+
 
 @router.get("/query")
 def query(q: str, lang: str = "en", db: Session = Depends(get_db)):
+    fingerprint = _data_fingerprint(db)
+    cache_key = (q.strip().lower(), lang, fingerprint)
+
+    if cache_key in _query_cache:
+        return {**_query_cache[cache_key], "cached": True}
+
     transactions = db.query(Transaction).order_by(Transaction.date.desc()).all()
     data = [
         {
@@ -24,6 +40,10 @@ def query(q: str, lang: str = "en", db: Session = Depends(get_db)):
 
     ai = answer_question(q, data, lang=lang)
     if ai:
-        return {**ai, "source": "deepseek"}
+        result = {**ai, "source": "deepseek", "cached": False}
+        _query_cache[cache_key] = result
+        return result
 
-    return {**run_query(q, data), "source": "rules"}
+    result = {**run_query(q, data), "source": "rules", "cached": False}
+    _query_cache[cache_key] = result
+    return result

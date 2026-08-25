@@ -92,26 +92,46 @@ def stats(db: Session = Depends(get_db)):
 @router.get("/dashboard")
 def dashboard(db: Session = Depends(get_db)):
     from datetime import datetime, timedelta
+    from sqlalchemy import case
 
     now = datetime.now()
     start_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     start_week = start_today - timedelta(days=start_today.weekday())
     start_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    rows = db.query(Transaction.date, Transaction.category, Transaction.amount).all()
+    # Today / week / month in one pass using conditional SUMs — no full-table load.
+    today = db.query(
+        func.coalesce(func.sum(case((Transaction.date >= start_today, Transaction.amount), else_=0)), 0)
+    ).scalar()
+    week = db.query(
+        func.coalesce(func.sum(case((Transaction.date >= start_week, Transaction.amount), else_=0)), 0)
+    ).scalar()
+    month = db.query(
+        func.coalesce(func.sum(case((Transaction.date >= start_month, Transaction.amount), else_=0)), 0)
+    ).scalar()
 
-    today = sum(a for d, _, a in rows if d >= start_today)
-    week = sum(a for d, _, a in rows if d >= start_week)
-    month = sum(a for d, _, a in rows if d >= start_month)
+    # Monthly totals via SQL GROUP BY (strftime works on SQLite; use DATE_TRUNC for Postgres later).
+    monthly_rows = (
+        db.query(
+            func.strftime("%Y-%m", Transaction.date).label("month"),
+            func.sum(Transaction.amount),
+        )
+        .group_by("month")
+        .order_by("month")
+        .all()
+    )
+    monthly = {key: float(total) for key, total in monthly_rows}
 
-    monthly = {}
-    for d, _, a in rows:
-        key = d.strftime("%Y-%m")
-        monthly[key] = monthly.get(key, 0) + a
-
-    by_cat = {}
-    for _, c, a in rows:
-        by_cat[c] = by_cat.get(c, 0) + a
+    # Category totals via SQL GROUP BY.
+    by_cat_rows = (
+        db.query(
+            Transaction.category,
+            func.sum(Transaction.amount),
+        )
+        .group_by(Transaction.category)
+        .all()
+    )
+    by_cat = {c: float(t) for c, t in by_cat_rows}
 
     month_names = {
         "01": "Jan", "02": "Feb", "03": "Mar", "04": "Apr", "05": "May", "06": "Jun",
@@ -119,9 +139,9 @@ def dashboard(db: Session = Depends(get_db)):
     }
 
     return {
-        "today": round(today, 2),
-        "week": round(week, 2),
-        "month": round(month, 2),
+        "today": round(float(today), 2),
+        "week": round(float(week), 2),
+        "month": round(float(month), 2),
         "monthly": [
             {"month": f"{month_names[key[5:]]} {key[:4]}", "total": round(total, 2)}
             for key, total in sorted(monthly.items())

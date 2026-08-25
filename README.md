@@ -15,7 +15,7 @@ Built with **React + Vite** (frontend), **FastAPI + SQLite** (backend), **Tesser
 | ✏️ **Confirm total** | After scanning, the extracted total shows in an editable field — check it against the receipt and correct it if the AI got it wrong, before it's final |
 | 🗂️ **Receipt gallery** | Every scanned receipt image is stored and viewable. **Select mode** lets you tap multiple receipts and delete them (removes the linked transactions + image files). Close button is sticky at the top for long receipts. |
 | 🔍 **Ask AI** | Type a question in plain English ("how much did I spend on dining in May?") — DeepSeek answers using your real transactions |
-| 📊 **Dashboard** | Spending today / this week / this month, a monthly bar chart, breakdown by category, a filterable transaction list, and an **AI-written summary** of your spending habits |
+| 📊 **Dashboard** | Spending today / this week / this month, a monthly bar chart, breakdown by category, a filterable transaction list, and an **AI-written summary** of your spending habits. The summary follows your chosen currency (RM/$) |
 | 🚨 **Alerts** | Detects purchases that are unusually expensive for your normal habits, then **DeepSeek reviews each one** and confirms or dismisses it with a reason |
 | ⚙️ **Settings** | Choose your currency — **Ringgit (RM)** or **Dollar ($)** — shown everywhere and saved between sessions (Defaults to RM) |
 | 🖼️ **Multi-format support** | JPEG, PNG, WebP (Android), HEIC (iPhone), and PDF (first page) are all resized and converted before sending to Gemini |
@@ -160,4 +160,35 @@ curl -s http://127.0.0.1:8000/api/stats
 ```
 
 > `seed.py` will **not** re-seed by itself (it skips when data already exists). To add sample data back later, just run `.venv/bin/python seed.py`.
+
+## 🐳 Deploying with Docker (ARM64 servers)
+
+The project ships Dockerfiles + `docker-compose.yml`. Key gotchas on ARM boards (Raspberry Pi, Orange Pi, etc.):
+
+- **OpenCV:** use `opencv-python-headless==4.10.0.84` — version 5.x has no ARM64 wheels and fails to compile on the device.
+- **`pillow-heif`:** leave unpinned so pip grabs the ARM64 wheel.
+- **nginx upload limit:** add `client_max_body_size 20m;` to `frontend/nginx.conf` — the default 1MB rejects phone photos.
+
+```bash
+docker compose up -d --build
+```
+
+Test the deployment end-to-end (the file must exist on the *host*, not inside a container):
+
+```bash
+curl -s -X POST "http://localhost:4006/api/receipts/upload" \
+  -F "file=@/tmp/receipt.png" -F "category=dining"
+```
+
+## 🔐 API keys (.env)
+
+Both keys go in `backend/.env` (never committed):
+
+```
+DEEPSEEK_API_KEY=...     # Ask AI, dashboard summary, anomaly review, OCR fallback
+GEMINI_API_KEY=...       # primary vision-based receipt reading
+```
+
+- Get DeepSeek: https://platform.deepseek.com
+- Get Gemini (free): https://aistudio.google.com/apikey
 

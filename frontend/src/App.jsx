@@ -59,7 +59,7 @@ export default function App() {
         axios.get(`${API}/receipts`),
         axios.get(`${API}/dashboard`),
         axios.get(`${API}/transactions`),
-        axios.get(`${API}/dashboard/summary`),
+        axios.get(`${API}/dashboard/summary`, { params: { currency } }),
       ]);
       if (s.status === "fulfilled") setStats(s.value.data);
       if (a.status === "fulfilled") {
@@ -924,29 +924,29 @@ export default function App() {
               <div
                 onClick={(e) => e.stopPropagation()}
                 style={{
-                  background: "var(--bg-glass)",
-                  backdropFilter: "blur(20px)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 24,
+                  background: "var(--card)",
+                  borderRadius: 20,
+                  maxWidth: 360,
                   width: "100%",
                   padding: 16,
                   position: "relative",
                   maxHeight: "85vh",
                   display: "flex",
-                  flexDirection: "column"
+                  flexDirection: "column",
+                  boxShadow: "0 10px 25px rgba(0,0,0,0.1)"
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <div style={{ fontWeight: 600, fontSize: 16, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, paddingRight: 12 }}>
+                  <div style={{ fontWeight: 600, fontSize: 16, color: "var(--text-main)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, paddingRight: 12 }}>
                     {selectedReceipt.filename}
                   </div>
                   <button 
                     onClick={() => setSelectedReceipt(null)}
                     style={{
                       padding: "6px 16px",
-                      background: "rgba(255, 255, 255, 0.1)",
-                      color: "var(--text)",
-                      border: "none",
+                      background: "var(--bg)",
+                      color: "var(--text-main)",
+                      border: "1px solid var(--border)",
                       borderRadius: 16,
                       fontSize: 14,
                       fontWeight: 600,
@@ -963,7 +963,7 @@ export default function App() {
                     alt={selectedReceipt.filename}
                     style={{ width: "100%", borderRadius: 12, display: "block" }}
                   />
-                  <pre style={{ fontSize: 11, whiteSpace: "pre-wrap", color: "var(--text-muted)", marginTop: 12, padding: 8, background: "rgba(0,0,0,0.2)", borderRadius: 8, fontFamily: "inherit" }}>
+                  <pre style={{ fontSize: 11, whiteSpace: "pre-wrap", color: "var(--text-muted)", marginTop: 12, padding: 12, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, fontFamily: "inherit" }}>
                     {selectedReceipt.ocr_text || "No raw text available."}
                   </pre>
                 </div>

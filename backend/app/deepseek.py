@@ -116,7 +116,7 @@ def verify_and_correct_total(ai):
     return round(ai_total, 2)
 
 
-def summarize_spending(dashboard_data):
+def summarize_spending(dashboard_data, currency="$"):
     """Generate a friendly plain-English summary of the dashboard."""
     messages = [
         {
@@ -125,6 +125,8 @@ def summarize_spending(dashboard_data):
                 "You are a personal finance assistant. Summarize the user's spending "
                 "in 2-4 concise, friendly sentences. Highlight the biggest category, "
                 "how this month compares to last, and any notable changes. "
+                f"Use the currency symbol '{currency}' before every amount "
+                f"(e.g. '{currency}43.46' or 'RM 43.46'), never '$' unless '{currency}' is '$'. "
                 "Use plain language, no markdown."
             ),
         },

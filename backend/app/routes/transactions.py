@@ -130,7 +130,7 @@ def dashboard(db: Session = Depends(get_db)):
     }
 
 @router.get("/dashboard/summary")
-def dashboard_summary(db: Session = Depends(get_db)):
+def dashboard_summary(currency: str = "$", db: Session = Depends(get_db)):
     from datetime import datetime, timedelta
 
     now = datetime.now()
@@ -150,7 +150,7 @@ def dashboard_summary(db: Session = Depends(get_db)):
         "monthly": monthly,
         "by_category": by_cat,
     }
-    summary = summarize_spending(data)
+    summary = summarize_spending(data, currency=currency)
     return {
         "summary": summary or "No DeepSeek API key set. Add one to enable AI summaries.",
     }

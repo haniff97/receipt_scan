@@ -90,6 +90,8 @@ def parse_receipt(text: str) -> dict:
         re.IGNORECASE,
     )
     for line in lines:
+        if re.search(r"\bsub\s*total\b|\bsub-total\b", line, re.IGNORECASE):
+            continue
         m = total_re.search(line)
         if m:
             raw = re.sub(r"[^0-9.,]", "", m.group(1))

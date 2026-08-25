@@ -924,10 +924,6 @@ export default function App() {
               <div
                 onClick={(e) => e.stopPropagation()}
                 style={{
-                  background: "#fff",
-                  borderRadius: 20,
-                  maxWidth: 360,
-                style={{
                   background: "var(--bg-glass)",
                   backdropFilter: "blur(20px)",
                   border: "1px solid var(--border)",

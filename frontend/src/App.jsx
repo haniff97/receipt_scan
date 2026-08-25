@@ -103,7 +103,7 @@ export default function App() {
     if (!query.trim()) return;
     const r = await axios.get(`${API}/query`, { params: { q: query, lang } });
     setResult(r.data);
-    setActiveTab("search");
+    setActiveTab("home");
   };
 
   const uploadReceipt = async (file) => {
@@ -478,39 +478,42 @@ export default function App() {
         </>
       )}
 
-      {/* Search Bar */}
-      <form onSubmit={runQuery} style={{
-        background: "var(--bg)",
-        border: "1px solid #e0e0e0",
-        borderRadius: 30,
-        padding: "12px 16px",
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-        marginTop: 8
-      }}>
-        <Search size={20} color="var(--text-muted)" />
-        <input 
-          ref={searchRef}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t("ask_quick")} 
-          style={{ 
-            flex: 1, 
-            background: "transparent", 
-            border: "none", 
-            outline: "none",
-            fontSize: 16,
-            color: "var(--text-main)"
-          }} 
-        />
-        <button type="submit" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <Mic size={20} color="var(--text-muted)" />
-        </button>
-      </form>
+      {/* Search Bar — only on the home page */}
+      {activeTab === "home" && (
+        <form onSubmit={runQuery} style={{
+          background: "var(--bg)",
+          border: "1px solid #e0e0e0",
+          borderRadius: 30,
+          padding: "12px 16px",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          marginTop: 8
+        }}>
+          <Search size={20} color="var(--text-muted)" />
+          <input 
+            ref={searchRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t("ask_quick")} 
+            style={{ 
+              flex: 1, 
+              background: "transparent", 
+              border: "none", 
+              outline: "none",
+              fontSize: 16,
+              color: "var(--text-main)"
+            }} 
+          />
+          <button type="submit" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Mic size={20} color="var(--text-muted)" />
+          </button>
+        </form>
+      )}
 
       {/* Query result */}
-      {result && (
+      {/* Query result — only on home */}
+      {activeTab === "home" && result && (
         <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.06)" }}>
           <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 6 }}>{result.answer}</div>
           <div style={{ color: "var(--text-muted)", fontSize: 12, marginBottom: 8 }}>
@@ -1211,15 +1214,15 @@ export default function App() {
           }}>
             <Plus size={20} strokeWidth={2} />
           </button>
-          <button onClick={() => setActiveTab("search")} style={{
-            background: activeTab === "search" ? "#ffffff" : "transparent",
+          <button onClick={() => setActiveTab("home")} style={{
+            background: activeTab === "home" ? "#ffffff" : "transparent",
             borderRadius: "50%",
             width: 44,
             height: 44,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            color: activeTab === "search" ? "#000000" : "#666666"
+            color: activeTab === "home" ? "#000000" : "#666666"
           }}>
             <Sparkles size={20} strokeWidth={2} />
           </button>

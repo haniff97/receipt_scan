@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -85,6 +85,11 @@ async def upload_receipt(
             tx_date = datetime.fromisoformat(ai["date"]) if ai.get("date") else datetime.now()
         except (ValueError, TypeError):
             tx_date = datetime.now()
+        # Sanitize: receipts are scanned when spent — reject clearly wrong dates
+        # (future, or more than a year old) so "today" queries stay accurate.
+        now_dt = datetime.now()
+        if tx_date > now_dt + timedelta(days=1) or tx_date < now_dt - timedelta(days=365):
+            tx_date = now_dt
     else:
         parsed = parse_receipt(text)
         if parsed["total"] is None:

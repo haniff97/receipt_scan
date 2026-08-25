@@ -15,7 +15,8 @@ import {
   Camera,
   Plus,
   AlertTriangle,
-  ReceiptText
+  ReceiptText,
+  Download
 } from "lucide-react";
 
 const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api";
@@ -27,7 +28,6 @@ export default function App() {
   const t = (k, v) => translate(lang, k, v);
   const catName = (c) => t(`cat.${c}`);
   const [currency, setCurrency] = useState(() => localStorage.getItem("currency") || "RM");
-  const [defaultCategory, setDefaultCategory] = useState(() => localStorage.getItem("defaultCategory") || "groceries");
   const [aiEnabled, setAiEnabled] = useState(() => localStorage.getItem("aiEnabled") !== "off");
   const [stats, setStats] = useState(null);
   const [anomalies, setAnomalies] = useState([]);
@@ -46,7 +46,7 @@ export default function App() {
   const [selectMode, setSelectMode] = useState(false);
   const [receiptFilter, setReceiptFilter] = useState("all");
   const [selectedForDelete, setSelectedForDelete] = useState([]);
-  const [receiptCategory, setReceiptCategory] = useState(() => localStorage.getItem("defaultCategory") || "groceries");
+  const [receiptCategory, setReceiptCategory] = useState("groceries");
   const [customCategory, setCustomCategory] = useState("");
   const [receiptPreview, setReceiptPreview] = useState(null);
   const [receiptOriginal, setReceiptOriginal] = useState(null);
@@ -54,6 +54,7 @@ export default function App() {
   const [editTotal, setEditTotal] = useState(null);
   const [editTxId, setEditTxId] = useState(null);
   const [msg, setMsg] = useState("");
+  const [feedbackText, setFeedbackText] = useState("");
   const searchRef = useRef(null);
   const fileRef = useRef(null);
   const cameraRef = useRef(null);
@@ -103,7 +104,6 @@ export default function App() {
     if (!query.trim()) return;
     const r = await axios.get(`${API}/query`, { params: { q: query, lang } });
     setResult(r.data);
-    setActiveTab("home");
   };
 
   const uploadReceipt = async (file) => {
@@ -184,7 +184,7 @@ export default function App() {
     setEditTotal(null);
     setEditTxId(null);
     setProcessing(false);
-    setReceiptCategory(defaultCategory);
+    setReceiptCategory("groceries");
     setCustomCategory("");
   };
 
@@ -478,54 +478,55 @@ export default function App() {
         </>
       )}
 
-      {/* Search Bar — only on the home page */}
-      {activeTab === "home" && (
-        <form onSubmit={runQuery} style={{
-          background: "var(--bg)",
-          border: "1px solid #e0e0e0",
-          borderRadius: 30,
-          padding: "12px 16px",
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          marginTop: 8
-        }}>
-          <Search size={20} color="var(--text-muted)" />
-          <input 
-            ref={searchRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t("ask_quick")} 
-            style={{ 
-              flex: 1, 
-              background: "transparent", 
-              border: "none", 
-              outline: "none",
-              fontSize: 16,
-              color: "var(--text-main)"
-            }} 
-          />
-          <button type="submit" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Mic size={20} color="var(--text-muted)" />
-          </button>
-        </form>
-      )}
+      {/* AI page — dedicated chat */}
+      {activeTab === "ai" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>{t("ask_ai")}</h2>
 
-      {/* Query result */}
-      {/* Query result — only on home */}
-      {activeTab === "home" && result && (
-        <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.06)" }}>
-          <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 6 }}>{result.answer}</div>
-          <div style={{ color: "var(--text-muted)", fontSize: 12, marginBottom: 8 }}>
-            Filters: {Object.keys(result.filters).length ? JSON.stringify(result.filters) : "none"}
-          </div>
-          <div style={{ maxHeight: 400, overflowY: "auto", paddingRight: 8 }}>
-            {(result.transactions || []).map((t, i) => (
-              <div key={i} style={{ fontSize: 13, padding: "6px 0", borderTop: "1px solid var(--border)" }}>
-                  {t.date.slice(0, 10)} · {t.merchant} · <strong>{$(t.amount)}</strong> <span style={{ color: "var(--text-muted)" }}>({catName(t.category)})</span>
+          <form onSubmit={runQuery} style={{
+            background: "var(--bg)",
+            border: "1px solid #e0e0e0",
+            borderRadius: 30,
+            padding: "12px 16px",
+            display: "flex",
+            alignItems: "center",
+            gap: 12
+          }}>
+            <Search size={20} color="var(--text-muted)" />
+            <input
+              ref={searchRef}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t("ask_placeholder")}
+              style={{
+                flex: 1,
+                background: "transparent",
+                border: "none",
+                outline: "none",
+                fontSize: 16,
+                color: "var(--text-main)"
+              }}
+            />
+            <button type="submit" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Mic size={20} color="var(--text-muted)" />
+            </button>
+          </form>
+
+          {result && (
+            <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.06)" }}>
+              <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 6 }}>{result.answer}</div>
+              <div style={{ color: "var(--text-muted)", fontSize: 12, marginBottom: 8 }}>
+                Filters: {Object.keys(result.filters).length ? JSON.stringify(result.filters) : "none"}
               </div>
-            ))}
-          </div>
+              <div style={{ maxHeight: 400, overflowY: "auto", paddingRight: 8 }}>
+                {(result.transactions || []).map((t, i) => (
+                  <div key={i} style={{ fontSize: 13, padding: "6px 0", borderTop: "1px solid var(--border)" }}>
+                    {t.date.slice(0, 10)} · {t.merchant} · <strong>{$(t.amount)}</strong> <span style={{ color: "var(--text-muted)" }}>({catName(t.category)})</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -861,22 +862,30 @@ export default function App() {
           </div>
 
           <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>
-            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 10 }}>{t("default_category")}</div>
-            <select
-              value={defaultCategory}
-              onChange={(e) => {
-                setDefaultCategory(e.target.value);
-                localStorage.setItem("defaultCategory", e.target.value);
-                setReceiptCategory(e.target.value);
+            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>{t("feedback")}</div>
+            <textarea
+              value={feedbackText}
+              onChange={(e) => setFeedbackText(e.target.value)}
+              placeholder={t("feedback_placeholder")}
+              rows={4}
+              style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "#fff", resize: "vertical", fontFamily: "inherit", boxSizing: "border-box" }}
+            />
+            <button
+              onClick={() => setFeedbackText("")}
+              style={{
+                width: "100%",
+                marginTop: 10,
+                background: "#111111",
+                color: "#fff",
+                borderRadius: 12,
+                padding: 12,
+                fontWeight: 600
               }}
-              style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "#fff", fontWeight: 600 }}
             >
-              {["groceries", "dining", "transport", "shopping", "utilities", "entertainment", "health", "travel"].map((c) => (
-                <option key={c} value={c}>{catName(c)}</option>
-              ))}
-            </select>
-            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10 }}>
-              {t("pre_selected")}
+              {t("send_feedback")}
+            </button>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8 }}>
+              {t("feedback_note")}
             </div>
           </div>
 
@@ -993,6 +1002,7 @@ export default function App() {
                   fontSize: 12
                 }}
               >
+                <Download size={14} style={{ verticalAlign: "middle", marginRight: 4 }} />
                 CSV
               </button>
             </div>
@@ -1214,15 +1224,15 @@ export default function App() {
           }}>
             <Plus size={20} strokeWidth={2} />
           </button>
-          <button onClick={() => setActiveTab("home")} style={{
-            background: activeTab === "home" ? "#ffffff" : "transparent",
+          <button onClick={() => setActiveTab("ai")} style={{
+            background: activeTab === "ai" ? "#ffffff" : "transparent",
             borderRadius: "50%",
             width: 44,
             height: 44,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            color: activeTab === "home" ? "#000000" : "#666666"
+            color: activeTab === "ai" ? "#000000" : "#666666"
           }}>
             <Sparkles size={20} strokeWidth={2} />
           </button>

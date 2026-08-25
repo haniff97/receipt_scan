@@ -475,6 +475,53 @@ export default function App() {
           <div style={{ color: "var(--text-muted)", fontSize: 12 }}>{t("above_usual", { n: anomalies.length })}</div>
         </button>
       </div>
+
+      {/* AI search bar — homepage only */}
+      <form onSubmit={runQuery} style={{
+        background: "var(--bg)",
+        border: "1px solid #e0e0e0",
+        borderRadius: 30,
+        padding: "12px 16px",
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        marginTop: 8
+      }}>
+        <Search size={20} color="var(--text-muted)" />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={t("ask_quick")}
+          style={{
+            flex: 1,
+            background: "transparent",
+            border: "none",
+            outline: "none",
+            fontSize: 16,
+            color: "var(--text-main)"
+          }}
+        />
+        <button type="submit" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Mic size={20} color="var(--text-muted)" />
+        </button>
+      </form>
+
+      {/* Query result — homepage only */}
+      {result && (
+        <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.06)" }}>
+          <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 6 }}>{result.answer}</div>
+          <div style={{ color: "var(--text-muted)", fontSize: 12, marginBottom: 8 }}>
+            Filters: {Object.keys(result.filters).length ? JSON.stringify(result.filters) : "none"}
+          </div>
+          <div style={{ maxHeight: 400, overflowY: "auto", paddingRight: 8 }}>
+            {(result.transactions || []).map((t, i) => (
+              <div key={i} style={{ fontSize: 13, padding: "6px 0", borderTop: "1px solid var(--border)" }}>
+                {t.date.slice(0, 10)} · {t.merchant} · <strong>{$(t.amount)}</strong> <span style={{ color: "var(--text-muted)" }}>({catName(t.category)})</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
         </>
       )}
 
@@ -862,34 +909,6 @@ export default function App() {
           </div>
 
           <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>
-            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>{t("feedback")}</div>
-            <textarea
-              value={feedbackText}
-              onChange={(e) => setFeedbackText(e.target.value)}
-              placeholder={t("feedback_placeholder")}
-              rows={4}
-              style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "#fff", resize: "vertical", fontFamily: "inherit", boxSizing: "border-box" }}
-            />
-            <button
-              onClick={() => setFeedbackText("")}
-              style={{
-                width: "100%",
-                marginTop: 10,
-                background: "#111111",
-                color: "#fff",
-                borderRadius: 12,
-                padding: 12,
-                fontWeight: 600
-              }}
-            >
-              {t("send_feedback")}
-            </button>
-            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8 }}>
-              {t("feedback_note")}
-            </div>
-          </div>
-
-          <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
                 <div style={{ fontWeight: 600, fontSize: 15 }}>{t("ai_assistance")}</div>
@@ -931,6 +950,34 @@ export default function App() {
                 {t("ai_off_note")}
               </div>
             )}
+          </div>
+
+          <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>
+            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>{t("feedback")}</div>
+            <textarea
+              value={feedbackText}
+              onChange={(e) => setFeedbackText(e.target.value)}
+              placeholder={t("feedback_placeholder")}
+              rows={4}
+              style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "#fff", resize: "vertical", fontFamily: "inherit", boxSizing: "border-box" }}
+            />
+            <button
+              onClick={() => setFeedbackText("")}
+              style={{
+                width: "100%",
+                marginTop: 10,
+                background: "#111111",
+                color: "#fff",
+                borderRadius: 12,
+                padding: 12,
+                fontWeight: 600
+              }}
+            >
+              {t("send_feedback")}
+            </button>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8 }}>
+              {t("feedback_note")}
+            </div>
           </div>
 
           <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>

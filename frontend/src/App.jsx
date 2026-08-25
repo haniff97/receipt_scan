@@ -22,7 +22,7 @@ const API_ORIGIN = API.replace(/\/api$/, "");
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("home");
-  const [currency, setCurrency] = useState(() => localStorage.getItem("currency") || "$");
+  const [currency, setCurrency] = useState(() => localStorage.getItem("currency") || "RM");
   const [stats, setStats] = useState(null);
   const [anomalies, setAnomalies] = useState([]);
   const [rejectedAnomalies, setRejectedAnomalies] = useState([]);
@@ -559,14 +559,53 @@ export default function App() {
               padding: 24,
               textAlign: "center",
               boxShadow: "0 2px 10px rgba(0,0,0,0.03)",
-              position: "relative",
-              overflow: "hidden"
             }}>
-              <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 12 }}>Scanning receipt…</div>
-              <div style={{ position: "relative", width: "100%", height: 160, background: "#f7f7f9", borderRadius: 12, overflow: "hidden" }}>
-                <div className="scan-line" />
+              <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 14, color: "var(--text-main)" }}>
+                Scanning receipt…
               </div>
-              <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 12 }}>Detecting edges, centering, and reading text…</div>
+
+              {/* Modern scan viewport */}
+              <div className="scan-viewport">
+                {/* Pulse rings */}
+                <div className="scan-ring" />
+                <div className="scan-ring" />
+
+                {/* Corner brackets */}
+                <div className="scan-brackets">
+                  <div className="br" />
+                </div>
+
+                {/* Sweeping beam */}
+                <div className="scan-beam" />
+
+                {/* Status dots */}
+                <div className="scan-dots">
+                  <div className="scan-dot" />
+                  <div className="scan-dot" />
+                  <div className="scan-dot" />
+                </div>
+
+                {/* Label inside dark viewport */}
+                <div style={{
+                  position: "absolute",
+                  top: "50%",
+                  left: "50%",
+                  translate: "-50% -50%",
+                  color: "rgba(162,155,254,0.7)",
+                  fontSize: 11,
+                  fontWeight: 500,
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  marginTop: 36,
+                  whiteSpace: "nowrap"
+                }}>
+                  Reading receipt
+                </div>
+              </div>
+
+              <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 14 }}>
+                AI is extracting merchant, date & total…
+              </div>
             </div>
           )}
 
@@ -888,6 +927,11 @@ export default function App() {
                   background: "#fff",
                   borderRadius: 20,
                   maxWidth: 360,
+                style={{
+                  background: "var(--bg-glass)",
+                  backdropFilter: "blur(20px)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 24,
                   width: "100%",
                   padding: 16,
                   position: "relative",
@@ -896,41 +940,37 @@ export default function App() {
                   flexDirection: "column"
                 }}
               >
-                <button
-                  onClick={() => setSelectedReceipt(null)}
-                  style={{
-                    position: "absolute",
-                    top: 12,
-                    right: 12,
-                    zIndex: 2,
-                    background: "rgba(0,0,0,0.65)",
-                    color: "#fff",
-                    borderRadius: "50%",
-                    width: 32,
-                    height: 32,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 16,
-                    fontWeight: 700
-                  }}
-                >
-                  ✕
-                </button>
-                <div style={{ fontWeight: 600, marginBottom: 8, paddingRight: 36 }}>
-                  {selectedReceipt.filename}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <div style={{ fontWeight: 600, fontSize: 16, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, paddingRight: 12 }}>
+                    {selectedReceipt.filename}
+                  </div>
+                  <button 
+                    onClick={() => setSelectedReceipt(null)}
+                    style={{
+                      padding: "6px 16px",
+                      background: "rgba(255, 255, 255, 0.1)",
+                      color: "var(--text)",
+                      border: "none",
+                      borderRadius: 16,
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: "pointer"
+                    }}
+                  >
+                    Close
+                  </button>
                 </div>
-                <div style={{ overflowY: "auto", flex: 1 }}>
+                
+                <div style={{ overflowY: "auto", flex: 1, borderRadius: 12 }}>
                   <img
                     src={`${API_ORIGIN}${selectedReceipt.image_url}`}
                     alt={selectedReceipt.filename}
-                    style={{ width: "100%", borderRadius: 12 }}
+                    style={{ width: "100%", borderRadius: 12, display: "block" }}
                   />
-                  <pre style={{ fontSize: 11, whiteSpace: "pre-wrap", color: "var(--text-muted)", maxHeight: 150, overflowY: "auto", fontFamily: "inherit" }}>
-                    {selectedReceipt.ocr_text}
+                  <pre style={{ fontSize: 11, whiteSpace: "pre-wrap", color: "var(--text-muted)", marginTop: 12, padding: 8, background: "rgba(0,0,0,0.2)", borderRadius: 8, fontFamily: "inherit" }}>
+                    {selectedReceipt.ocr_text || "No raw text available."}
                   </pre>
                 </div>
-                <button style={{ width: "100%", marginTop: 8 }} onClick={() => setSelectedReceipt(null)}>Close</button>
               </div>
             </div>
           )}

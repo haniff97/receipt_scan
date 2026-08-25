@@ -5,6 +5,8 @@
   --text-muted: #888888;
   --orange: #ff8c00;
   --border: #f0f0f0;
+  --accent: #6c5ce7;
+  --accent-soft: #eceafb;
 }
 
 body {
@@ -32,7 +34,7 @@ input {
 }
 
 .action-card {
-  transition: transform 0.1s ease, box-shadow 0.2s ease;
+  transition: transform 0.15s ease, box-shadow 0.2s ease;
 }
 
 .action-card:active {
@@ -50,28 +52,171 @@ input {
   }
 }
 
-.scan-line {
+/* ── Modern scan animation ── */
+
+.scan-viewport {
+  position: relative;
+  width: 100%;
+  height: 200px;
+  background: #0d0d12;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+/* Subtle grid background */
+.scan-viewport::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(108,92,231,0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(108,92,231,0.07) 1px, transparent 1px);
+  background-size: 28px 28px;
+  animation: gridPulse 3s ease-in-out infinite;
+}
+
+@keyframes gridPulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+/* Outer pulse ring */
+.scan-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(108,92,231,0.5);
+  animation: ringPulse 2s ease-out infinite;
+}
+
+.scan-ring:nth-child(2) {
+  animation-delay: 0.7s;
+}
+
+@keyframes ringPulse {
+  0% { transform: scale(0.6); opacity: 0.9; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+/* Corner brackets */
+.scan-brackets {
+  position: absolute;
+  inset: 18px;
+  animation: bracketPulse 2.2s ease-in-out infinite;
+}
+
+@keyframes bracketPulse {
+  0%, 100% { opacity: 0.7; }
+  50%       { opacity: 1; }
+}
+
+.scan-brackets::before,
+.scan-brackets::after,
+.scan-brackets .br::before,
+.scan-brackets .br::after {
+  content: '';
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-color: #a29bfe;
+  border-style: solid;
+}
+
+/* top-left */
+.scan-brackets::before {
+  top: 0; left: 0;
+  border-width: 2.5px 0 0 2.5px;
+  border-radius: 4px 0 0 0;
+}
+/* top-right */
+.scan-brackets::after {
+  top: 0; right: 0;
+  border-width: 2.5px 2.5px 0 0;
+  border-radius: 0 4px 0 0;
+}
+/* bottom-left */
+.scan-brackets .br::before {
+  bottom: 0; left: 0;
+  border-width: 0 0 2.5px 2.5px;
+  border-radius: 0 0 0 4px;
+}
+/* bottom-right */
+.scan-brackets .br::after {
+  bottom: 0; right: 0;
+  border-width: 0 2.5px 2.5px 0;
+  border-radius: 0 0 4px 0;
+}
+
+/* Scanning beam */
+.scan-beam {
   position: absolute;
   left: 0;
   right: 0;
-  top: 0;
-  height: 3px;
-  background: linear-gradient(90deg, transparent, var(--orange), transparent);
-  box-shadow: 0 0 12px var(--orange);
-  animation: scanMove 1.8s ease-in-out infinite;
+  height: 2px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(108,92,231,0.4) 20%,
+    #a29bfe 50%,
+    rgba(108,92,231,0.4) 80%,
+    transparent 100%
+  );
+  box-shadow:
+    0 0 6px 2px rgba(162,155,254,0.6),
+    0 0 20px 4px rgba(108,92,231,0.3);
+  animation: beamSweep 2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
-@keyframes scanMove {
-  0% {
-    top: 4%;
-  }
-  50% {
-    top: 94%;
-  }
-  100% {
-    top: 4%;
-  }
+@keyframes beamSweep {
+  0%   { top: 15%; }
+  50%  { top: 82%; }
+  100% { top: 15%; }
 }
+
+/* Glow trail below the beam */
+.scan-beam::after {
+  content: '';
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  top: 0;
+  height: 40px;
+  background: linear-gradient(180deg, rgba(108,92,231,0.15) 0%, transparent 100%);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+/* Floating status dots */
+.scan-dots {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  translate: -50% 0;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.scan-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #a29bfe;
+  animation: dotBlink 1.4s ease-in-out infinite;
+}
+
+.scan-dot:nth-child(2) { animation-delay: 0.2s; }
+.scan-dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes dotBlink {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(1); }
+  40%           { opacity: 1;   transform: scale(1.35); }
+}
+
+/* ── Post-scan reveal animation ── */
 
 .doc-snap {
   animation: snapIn 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2);
@@ -89,30 +234,18 @@ input {
 }
 
 .morph-panel {
-  animation: morphIn 1.4s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
-}
-
-.morph-panel img {
-  animation: straighten 1.4s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
-  transform-origin: center;
-}
-
-@keyframes straighten {
-  0% {
-    transform: rotate(-4deg) scale(1.08);
-    filter: blur(1px) brightness(0.9);
-  }
-  100% {
-    transform: rotate(0deg) scale(1);
-    filter: blur(0) brightness(1);
-  }
+  animation: morphIn 0.6s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
 }
 
 @keyframes morphIn {
   from {
-    opacity: 0.6;
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
   }
   to {
     opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
+
+

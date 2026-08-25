@@ -14,16 +14,17 @@ from .deskew import deskew
 register_heif_opener()
 
 
-def deskew_bytes(image_bytes: bytes) -> bytes:
-    """Deskew an image (JPEG/PNG/WebP/HEIC/etc.) and return re-encoded PNG bytes."""
+def exif_correct_bytes(image_bytes: bytes) -> bytes:
+    """Apply EXIF orientation tag and re-encode as JPEG.
+
+    Phone photos store rotation in EXIF — the raw bytes are actually sideways.
+    Gemini API does NOT always honour EXIF tags, so we bake in the rotation
+    before sending. Returns corrected JPEG bytes.
+    """
     img = Image.open(io.BytesIO(image_bytes))
     img = ImageOps.exif_transpose(img).convert("RGB")
-    arr = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
-    corrected = deskew(arr)
-    out = cv2.cvtColor(corrected, cv2.COLOR_BGR2RGB)
-    pil = Image.fromarray(out)
     buf = io.BytesIO()
-    pil.save(buf, format="PNG")
+    img.save(buf, format="JPEG", quality=92)
     return buf.getvalue()
 
 

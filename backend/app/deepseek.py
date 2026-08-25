@@ -77,8 +77,9 @@ def verify_and_correct_total(ai):
     """Validate the AI's total using the method it reported.
 
     The AI reports 'total_method':
-      - "printed"  → it SAW a printed final total line → trust it, no correction.
-      - "computed" → it summed item prices itself → re-verify against the items.
+      - "printed"  → it SAW a printed final total line → trust it exactly.
+      - "computed" → it summed item prices itself → trust its sum directly
+                     (do NOT add tax again — the AI already accounted for it).
       - missing    → older/fallback responses → only correct if clearly subtotal.
 
     Returns the corrected total (float) or None.
@@ -92,28 +93,27 @@ def verify_and_correct_total(ai):
     ai_total = float(ai_total)
 
     method = ai.get("total_method")
-    if method == "printed":
-        return ai_total
 
+    # Both "printed" and "computed" — trust the AI's value directly.
+    if method in ("printed", "computed"):
+        return round(ai_total, 2)
+
+    # Legacy fallback (no total_method): only nudge if AI total looks like
+    # a bare subtotal (matches item sum exactly) and tax info is present.
     items = ai.get("items") or []
     prices = [
         float(i["price"])
         for i in items
         if isinstance(i, dict) and isinstance(i.get("price"), (int, float)) and i["price"] > 0
     ]
-
-    if method == "computed":
-        # AI was unsure — recompute from the items it extracted.
-        if prices:
-            return round(sum(prices) * 1.06, 2)
-        return ai_total
-
-    # Legacy fallback (no total_method): only correct if AI total clearly == item subtotal.
     if prices:
         subtotal = round(sum(prices), 2)
-        if abs(ai_total - subtotal) < 0.05:
-            return round(subtotal * 1.06, 2)
-    return ai_total
+        if abs(ai_total - subtotal) < 0.05 and ai.get("tax"):
+            # Only apply tax if the receipt explicitly states a tax rate
+            tax_rate = float(ai.get("tax", 0)) / 100
+            if tax_rate > 0:
+                return round(subtotal * (1 + tax_rate), 2)
+    return round(ai_total, 2)
 
 
 def summarize_spending(dashboard_data):
@@ -147,7 +147,7 @@ def answer_question(question, transactions):
                 "You are a personal finance assistant with access to the user's "
                 "transactions. Answer their question accurately using the data. "
                 "Return ONLY valid JSON with keys: "
-                '"answer" (string, 1-2 sentences with $ amounts), '
+                '"answer" (string, 1-2 sentences with RM amounts), '
                 '"filters" (object describing what you filtered by), '
                 '"transactions" (array of up to 10 matching items, each '
                 '{"date","merchant","amount","category"}). '

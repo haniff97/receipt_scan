@@ -11,7 +11,7 @@ from ..gemini import extract_receipt
 from ..database import get_db
 from ..models import Receipt, Transaction
 from ..schemas import ReceiptCreateResponse
-from ..ocr import ocr_image, open_as_image, parse_receipt, deskew_bytes
+from ..ocr import ocr_image, open_as_image, parse_receipt, exif_correct_bytes
 
 register_heif_opener()
 
@@ -30,18 +30,23 @@ async def upload_receipt(
     image_bytes = await file.read()
     is_pdf_file = image_bytes[:5] == b"%PDF-"
 
-    if is_pdf_file:
-        display_bytes = image_bytes
-    else:
+    # Apply EXIF orientation before anything else.
+    # Phone cameras store rotation in EXIF — raw bytes are sideways.
+    # Gemini API does NOT reliably honour EXIF, so bake the rotation in.
+    if not is_pdf_file:
         try:
-            display_bytes = deskew_bytes(image_bytes)
+            gemini_bytes = exif_correct_bytes(image_bytes)
         except Exception:
-            display_bytes = image_bytes
+            gemini_bytes = image_bytes
+    else:
+        gemini_bytes = image_bytes
 
-    # 1) PRIMARY: Gemini vision reads the image directly (most accurate)
+    display_bytes = gemini_bytes  # save the same corrected image to disk
+
+    # 1) PRIMARY: Gemini vision reads the corrected image (most accurate)
     ai = None
     if not is_pdf_file:
-        ai = extract_receipt(image_bytes)
+        ai = extract_receipt(gemini_bytes, mime="image/jpeg")
 
     # 2) FALLBACK: tesseract OCR + DeepSeek cleanup
     text = ""
@@ -51,17 +56,20 @@ async def upload_receipt(
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"OCR failed: {e}")
 
-    existing = (
-        db.query(Receipt)
-        .filter(Receipt.ocr_text == text)
-        .first()
-    )
-    if existing:
-        raise HTTPException(
-            status_code=409,
-            detail=f"This receipt was already uploaded (id={existing.id}). "
-                   f"Scan a different receipt.",
+    # Duplicate check — only meaningful when we have actual OCR text.
+    # When Gemini succeeds, text is "" so we skip to avoid false positives.
+    if text:
+        existing = (
+            db.query(Receipt)
+            .filter(Receipt.ocr_text == text)
+            .first()
         )
+        if existing:
+            raise HTTPException(
+                status_code=409,
+                detail=f"This receipt was already uploaded (id={existing.id}). "
+                       f"Scan a different receipt.",
+            )
 
     parsed = parse_receipt(text) if text else {"total": None, "merchant": "Unknown", "date": None}
 

@@ -1,8 +1,8 @@
 # 🧾 Receipt Tracker
 
-A full-stack mobile-style app that reads your receipts, understands your spending in plain English, detects unusual charges, and summarizes everything with AI.
+A full-stack mobile-style app that reads your receipts, understands your spending in plain English or Bahasa Melayu, detects unusual charges, and summarizes everything with AI.
 
-Built with **React + Vite** (frontend), **FastAPI + SQLite** (backend), **Tesseract OCR**, and the **DeepSeek API**.
+Built with **React + Vite** (frontend), **FastAPI + SQLite** (backend), **Tesseract OCR**, and AI via **Gemini** + **DeepSeek**.
 
 ---
 
@@ -13,16 +13,23 @@ Built with **React + Vite** (frontend), **FastAPI + SQLite** (backend), **Tesser
 | 📸 **Scan a receipt** | Take a photo (camera or gallery/PDF) → EXIF rotation is corrected → **Gemini 3.7 Flash** vision AI reads the receipt directly (highly accurate) → Tesseract OCR + DeepSeek used as a fallback if Gemini is unavailable |
 | 🎬 **Morph animation** | The raw photo visibly scans with a modern sweeping gradient and pulse rings |
 | ✏️ **Confirm total** | After scanning, the extracted total shows in an editable field — check it against the receipt and correct it if the AI got it wrong, before it's final |
-| 🗂️ **Receipt gallery** | Every scanned receipt image is stored and viewable. **Select mode** lets you tap multiple receipts and delete them (removes the linked transactions + image files). Close button is sticky at the top for long receipts. |
-| 🔍 **Ask AI** | Type a question in plain English ("how much did I spend on dining in May?") — DeepSeek answers using your real transactions |
-| 📊 **Dashboard** | Spending today / this week / this month, a monthly bar chart, breakdown by category, a filterable transaction list, and an **AI-written summary** of your spending habits. The summary follows your chosen currency (RM/$) |
-| 🚨 **Alerts** | Detects purchases that are unusually expensive for your normal habits, then **DeepSeek reviews each one** and confirms or dismisses it with a reason |
-| ⚙️ **Settings** | Choose your currency — **Ringgit (RM)** or **Dollar ($)** — shown everywhere and saved between sessions (Defaults to RM) |
+| 🗂️ **Receipt gallery** | Every scanned receipt image is stored and viewable. **Select mode** lets you tap multiple receipts and delete them. Filter by **Day / Week / Month**. Close button is sticky at the top for long receipts. |
+| 📥 **Export CSV** | One tap downloads all transactions as a `.csv` (Date, Merchant, Category, Amount, Description) for Excel/Sheets |
+| 🔍 **Ask AI** | Type a question in plain English or Malay — DeepSeek answers using your real transactions |
+| 📊 **Dashboard** | Spending today / this week / this month, a monthly bar chart, breakdown by category, a filterable transaction list, and an **AI-written summary** of your spending habits. The summary follows your chosen currency (RM/$) and language |
+| 🚨 **Alerts** | Detects purchases that are unusually expensive for your normal habits, then **DeepSeek reviews each one** and confirms or dismisses it with a reason (in your language) |
+| ⚙️ **Settings** | Language (**English / Bahasa Melayu** — the whole UI + AI replies), currency (**Ringgit RM / Dollar $**), default category, and an **AI toggle** (on = auto-read, off = manual entry). All saved per device |
 | 🖼️ **Multi-format support** | JPEG, PNG, WebP (Android), HEIC (iPhone), and PDF (first page) are all resized and converted before sending to Gemini |
 | ➕ **Custom categories** | Add your own categories (e.g. "pets") when scanning |
 | 🚫 **Duplicate protection** | Scanning the same receipt twice is rejected — no double-counted expenses |
 
 **Important:** the only way to add receipts is through the **Scan** page — no import buttons elsewhere, so every expense is a verified scan.
+
+## 🌐 Languages
+
+- **English** and **Bahasa Melayu** are fully supported.
+- Switching language in Settings translates the **entire UI** (labels, buttons, categories, messages).
+- **AI-generated text follows too** — the dashboard summary, Ask AI answers, and anomaly reasons are generated in the selected language (the app passes `lang` to DeepSeek).
 
 ## 🧰 Tech stack
 
@@ -58,12 +65,17 @@ Scan/
 │   └── .env                   # DEEPSEEK_API_KEY (not committed)
 └── frontend/                  # React app (Vite)
     └── src/
-        ├── App.jsx            # entire UI (home, scan, receipts, dashboard, alerts)
+        ├── App.jsx            # entire UI (home, scan, receipts, dashboard, alerts, settings)
+        ├── i18n.js            # English + Bahasa Melayu translations
         └── index.css
 ```
 
 ## 📝 Recent Updates
 
+- **Languages:** Added full **Bahasa Melayu** support — the whole UI translates (Settings → Language), and **AI replies follow** (dashboard summary, Ask AI, anomaly reasons are generated in the selected language via a `lang` parameter).
+- **Receipt gallery filters:** Filter receipts by **Day / Week / Month**.
+- **Export CSV:** One-tap download of all transactions as a `.csv` file.
+- **Settings:** Added **default category** and an **AI toggle** (on = AI auto-read, off = manual entry — the future free-tier mode).
 - **Upgraded Vision API:** Switched the default model to the latest **`gemini-3.7-flash`** for highly accurate receipt parsing (fixed a 404 error from an invalid model name).
 - **Fixed Photo Rotation (EXIF):** Uploaded phone photos are now correctly rotated and compressed (<1600px) *before* being sent to Gemini, fixing issues where sideways receipts caused bad reads.
 - **Fixed Total Calculation Bug:** Removed a bug where a 6% tax multiplier was blindly applied even when the AI had already correctly computed the sum.
@@ -129,9 +141,9 @@ On macOS: `brew install tesseract`
 | GET | `/api/stats` | Total spent + transaction count |
 | GET | `/api/categories` | Spend per category |
 | GET | `/api/dashboard` | Today / week / month spend, monthly + category breakdown |
-| GET | `/api/dashboard/summary` | AI plain-English spending summary |
-| GET | `/api/query?q=...` | Natural language question answered by AI |
-| GET | `/api/anomalies` | Anomaly candidates reviewed by AI |
+| GET | `/api/dashboard/summary?currency=RM&lang=ms` | AI plain-English/Bahasa Melayu spending summary |
+| GET | `/api/query?q=...&lang=ms` | Natural language question answered by AI (in chosen language) |
+| GET | `/api/anomalies?lang=ms` | Anomaly candidates reviewed by AI (reasons in chosen language) |
 | POST | `/api/receipts/upload` | Upload receipt (image/PDF/HEIC) → deskew → OCR → AI → create transaction |
 | GET | `/api/receipts` | List receipts |
 | GET | `/api/receipts/{id}/image` | Serve a saved receipt image |

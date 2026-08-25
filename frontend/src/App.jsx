@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
+import { translate } from "./i18n";
 import { 
   Settings, 
   Bell, 
@@ -22,7 +23,12 @@ const API_ORIGIN = API.replace(/\/api$/, "");
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("home");
+  const [lang, setLang] = useState(() => localStorage.getItem("lang") || "en");
+  const t = (k, v) => translate(lang, k, v);
+  const catName = (c) => t(`cat.${c}`);
   const [currency, setCurrency] = useState(() => localStorage.getItem("currency") || "RM");
+  const [defaultCategory, setDefaultCategory] = useState(() => localStorage.getItem("defaultCategory") || "groceries");
+  const [aiEnabled, setAiEnabled] = useState(() => localStorage.getItem("aiEnabled") !== "off");
   const [stats, setStats] = useState(null);
   const [anomalies, setAnomalies] = useState([]);
   const [rejectedAnomalies, setRejectedAnomalies] = useState([]);
@@ -38,8 +44,9 @@ export default function App() {
   const [showNotify, setShowNotify] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [selectMode, setSelectMode] = useState(false);
+  const [receiptFilter, setReceiptFilter] = useState("all");
   const [selectedForDelete, setSelectedForDelete] = useState([]);
-  const [receiptCategory, setReceiptCategory] = useState("groceries");
+  const [receiptCategory, setReceiptCategory] = useState(() => localStorage.getItem("defaultCategory") || "groceries");
   const [customCategory, setCustomCategory] = useState("");
   const [receiptPreview, setReceiptPreview] = useState(null);
   const [receiptOriginal, setReceiptOriginal] = useState(null);
@@ -55,11 +62,11 @@ export default function App() {
     try {
       const [s, a, r, d, t, sm] = await Promise.allSettled([
         axios.get(`${API}/stats`),
-        axios.get(`${API}/anomalies`),
+        axios.get(`${API}/anomalies`, { params: { lang } }),
         axios.get(`${API}/receipts`),
         axios.get(`${API}/dashboard`),
         axios.get(`${API}/transactions`),
-        axios.get(`${API}/dashboard/summary`, { params: { currency } }),
+        axios.get(`${API}/dashboard/summary`, { params: { currency, lang } }),
       ]);
       if (s.status === "fulfilled") setStats(s.value.data);
       if (a.status === "fulfilled") {
@@ -71,7 +78,7 @@ export default function App() {
       if (t.status === "fulfilled") setTransactions(t.value.data);
       if (sm.status === "fulfilled") setDashSummary(sm.value.data.summary);
     } catch (e) {
-      setMsg("Backend not reachable. Is uvicorn running on :8000?");
+      setMsg(t("not_reachable"));
     }
   };
 
@@ -94,7 +101,7 @@ export default function App() {
   const runQuery = async (e) => {
     e.preventDefault();
     if (!query.trim()) return;
-    const r = await axios.get(`${API}/query`, { params: { q: query } });
+    const r = await axios.get(`${API}/query`, { params: { q: query, lang } });
     setResult(r.data);
     setActiveTab("search");
   };
@@ -112,6 +119,7 @@ export default function App() {
       const fd = new FormData();
       fd.append("file", file);
       fd.append("category", category);
+      if (!aiEnabled) fd.append("ai", "off");
       const r = await axios.post(`${API}/receipts/upload`, fd);
 
       const backendImg = `${API_ORIGIN}${r.data.image_url || `/api/receipts/${r.data.id}/image`}`;
@@ -121,7 +129,7 @@ export default function App() {
       setConfirming(true);
       await refresh();
     } catch (err) {
-      setMsg(err.response?.data?.detail || "Upload failed.");
+      setMsg(err.response?.data?.detail || t("upload_failed"));
     } finally {
       setProcessing(false);
     }
@@ -140,10 +148,10 @@ export default function App() {
         description: cur ? cur.description : "",
       });
       setConfirming(false);
-      setMsg("Total updated.");
+      setMsg(t("total_updated"));
       await refresh();
     } catch (err) {
-      setMsg(err.response?.data?.detail || "Failed to update total.");
+      setMsg(err.response?.data?.detail || t("delete_failed"));
     }
   };
 
@@ -161,10 +169,10 @@ export default function App() {
       );
       setSelectedForDelete([]);
       setSelectMode(false);
-      setMsg("Receipt(s) deleted.");
+      setMsg(t("deleted"));
       await refresh();
     } catch (err) {
-      setMsg(err.response?.data?.detail || "Failed to delete.");
+      setMsg(err.response?.data?.detail || t("delete_failed"));
     }
   };
 
@@ -176,7 +184,7 @@ export default function App() {
     setEditTotal(null);
     setEditTxId(null);
     setProcessing(false);
-    setReceiptCategory("groceries");
+    setReceiptCategory(defaultCategory);
     setCustomCategory("");
   };
 
@@ -210,6 +218,44 @@ export default function App() {
       return true;
     });
   }, [transactions, dashFilter]);
+
+  const filteredReceipts = useMemo(() => {
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
+    startOfWeek.setHours(0, 0, 0, 0);
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    return receipts.filter((r) => {
+      const d = new Date(r.uploaded_at);
+      if (receiptFilter === "day" && d.toDateString() !== now.toDateString()) return false;
+      if (receiptFilter === "week" && d < startOfWeek) return false;
+      if (receiptFilter === "month" && d < startOfMonth) return false;
+      return true;
+    });
+  }, [receipts, receiptFilter]);
+
+  const exportCsv = () => {
+    if (transactions.length === 0) return;
+    const header = "Date,Merchant,Category,Amount,Description";
+    const rows = transactions.map((t) =>
+      [
+        t.date.slice(0, 10),
+        `"${(t.merchant || "").replace(/"/g, '""')}"`,
+        `"${(t.category || "").replace(/"/g, '""')}"`,
+        t.amount,
+        `"${(t.description || "").replace(/"/g, '""')}"`,
+      ].join(",")
+    );
+    const csv = [header, ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `receipts_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div style={{
@@ -247,13 +293,18 @@ export default function App() {
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 20 }}>🔔</span>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>Unusual spending detected</div>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>{t("unusual_spending")}</div>
               <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                {anomalies[0].merchant} — ${Number(anomalies[0].amount).toFixed(2)} is {anomalies[0].vs_median}x your usual {anomalies[0].category} spend
+                {t("unusual_spending_body", {
+                  merchant: anomalies[0].merchant,
+                  amount: $(anomalies[0].amount),
+                  x: anomalies[0].vs_median,
+                  cat: anomalies[0].category,
+                })}
               </div>
             </div>
           </div>
-          <div style={{ fontSize: 11, color: "var(--orange)", marginTop: 6, textAlign: "right" }}>Tap to see all alerts →</div>
+          <div style={{ fontSize: 11, color: "var(--orange)", marginTop: 6, textAlign: "right" }}>{t("tap_see_alerts")}</div>
         </button>
       )}
 
@@ -293,18 +344,18 @@ export default function App() {
           {/* Alerts panel */}
       {showAlerts && (
         <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.06)" }}>
-          <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 8 }}>Alerts</div>
+          <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 8 }}>{t("alerts")}</div>
           <div style={{ color: "var(--text-muted)", fontSize: 12, marginBottom: 10 }}>
-            Reviewed by AI — purchases unusually expensive vs your normal habits.
+            {t("reviewed_by_ai")}
           </div>
-          {anomalies.length === 0 && rejectedAnomalies.length === 0 && <div style={{ color: "var(--text-muted)", fontSize: 13 }}>None detected. Looking good.</div>}
+          {anomalies.length === 0 && rejectedAnomalies.length === 0 && <div style={{ color: "var(--text-muted)", fontSize: 13 }}>{t("none_detected")}</div>}
           {anomalies.map((a) => (
             <div key={a.id} style={{ background: "#fff4f0", borderRadius: 12, padding: 10, marginBottom: 8, fontSize: 13 }}>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <strong>{a.merchant}</strong>
                 <strong>{$(a.amount)}</strong>
               </div>
-              <div style={{ color: "var(--text-muted)", fontSize: 11, marginTop: 2 }}>{a.category} · {a.vs_median}x usual</div>
+              <div style={{ color: "var(--text-muted)", fontSize: 11, marginTop: 2 }}>{catName(a.category)} · {a.vs_median}x usual</div>
               {a.ai_reason && <div style={{ color: "var(--orange)", fontSize: 12, marginTop: 4 }}>{a.ai_reason}</div>}
             </div>
           ))}
@@ -330,7 +381,7 @@ export default function App() {
           color: "var(--text-muted)", 
           letterSpacing: "-0.5px"
         }}>
-          Hello,
+          {t("hello")}
         </h1>
         <h2 style={{ 
           fontSize: 32, 
@@ -339,20 +390,20 @@ export default function App() {
           color: "var(--text-main)", 
           letterSpacing: "-0.5px",
           lineHeight: 1.1
-        }}>
-          Ready to scan<br />some receipts?
-        </h2>
+        }}
+          dangerouslySetInnerHTML={{ __html: t("ready_to_scan") }}
+        />
       </div>
 
       {/* Stats */}
       {stats && (
         <div style={{ display: "flex", gap: 12 }}>
           <div style={{ flex: 1, background: "var(--card)", borderRadius: 20, padding: 16, textAlign: "center" }}>
-            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Total spent</div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("total_spent")}</div>
             <div style={{ fontSize: 20, fontWeight: 700 }}>{$(stats.total_spent)}</div>
           </div>
           <div style={{ flex: 1, background: "var(--card)", borderRadius: 20, padding: 16, textAlign: "center" }}>
-            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Transactions</div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("transactions")}</div>
             <div style={{ fontSize: 20, fontWeight: 700 }}>{stats.transaction_count}</div>
           </div>
         </div>
@@ -375,8 +426,8 @@ export default function App() {
           boxShadow: "0 2px 10px rgba(0,0,0,0.02)"
         }}>
           <Scan size={28} color="var(--text-muted)" strokeWidth={1.5} style={{ marginBottom: 20 }} />
-          <div style={{ fontWeight: 600, fontSize: 18, marginBottom: 4, color: "var(--text-main)" }}>Scan</div>
-          <div style={{ color: "var(--text-muted)", fontSize: 12 }}>Receipt photo, we read it</div>
+          <div style={{ fontWeight: 600, fontSize: 18, marginBottom: 4, color: "var(--text-main)" }}>{t("scan")}</div>
+          <div style={{ color: "var(--text-muted)", fontSize: 12 }}>{t("receipt_photo_read")}</div>
         </button>
 
         <button className="action-card" onClick={() => setActiveTab("receipts")} style={{
@@ -390,8 +441,8 @@ export default function App() {
           boxShadow: "0 2px 10px rgba(0,0,0,0.02)"
         }}>
           <ReceiptText size={28} color="var(--text-muted)" strokeWidth={1.5} style={{ marginBottom: 20 }} />
-          <div style={{ fontWeight: 600, fontSize: 18, marginBottom: 4, color: "var(--text-main)" }}>Receipt</div>
-          <div style={{ color: "var(--text-muted)", fontSize: 12 }}>{receipts.length} saved, tap to view</div>
+          <div style={{ fontWeight: 600, fontSize: 18, marginBottom: 4, color: "var(--text-main)" }}>{t("receipts")}</div>
+          <div style={{ color: "var(--text-muted)", fontSize: 12 }}>{t("saved_tap_to_view", { n: receipts.length })}</div>
         </button>
 
         <button className="action-card" onClick={() => setActiveTab("dashboard")} style={{
@@ -405,8 +456,8 @@ export default function App() {
           boxShadow: "0 2px 10px rgba(0,0,0,0.02)"
         }}>
           <ExternalLink size={28} color="var(--text-muted)" strokeWidth={1.5} style={{ marginBottom: 20 }} />
-          <div style={{ fontWeight: 600, fontSize: 18, marginBottom: 4, color: "var(--text-main)" }}>Dashboard</div>
-          <div style={{ color: "var(--text-muted)", fontSize: 12 }}>Day, week, month spend</div>
+          <div style={{ fontWeight: 600, fontSize: 18, marginBottom: 4, color: "var(--text-main)" }}>{t("dashboard")}</div>
+          <div style={{ color: "var(--text-muted)", fontSize: 12 }}>{t("day_week_month")}</div>
         </button>
 
         <button className="action-card" onClick={() => setActiveTab("alerts")} style={{
@@ -420,8 +471,8 @@ export default function App() {
           boxShadow: "0 2px 10px rgba(0,0,0,0.02)"
         }}>
           <AlertTriangle size={28} color="var(--orange)" strokeWidth={1.5} style={{ marginBottom: 20 }} />
-          <div style={{ fontWeight: 600, fontSize: 18, marginBottom: 4, color: "var(--text-main)" }}>Alerts</div>
-          <div style={{ color: "var(--text-muted)", fontSize: 12 }}>{anomalies.length} above usual spend</div>
+          <div style={{ fontWeight: 600, fontSize: 18, marginBottom: 4, color: "var(--text-main)" }}>{t("alerts")}</div>
+          <div style={{ color: "var(--text-muted)", fontSize: 12 }}>{t("above_usual", { n: anomalies.length })}</div>
         </button>
       </div>
         </>
@@ -443,7 +494,7 @@ export default function App() {
           ref={searchRef}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Ask: how much on dining in may?" 
+          placeholder={t("ask_quick")} 
           style={{ 
             flex: 1, 
             background: "transparent", 
@@ -468,7 +519,7 @@ export default function App() {
           <div style={{ maxHeight: 400, overflowY: "auto", paddingRight: 8 }}>
             {(result.transactions || []).map((t, i) => (
               <div key={i} style={{ fontSize: 13, padding: "6px 0", borderTop: "1px solid var(--border)" }}>
-                {t.date.slice(0, 10)} · {t.merchant} · <strong>{$(t.amount)}</strong> <span style={{ color: "var(--text-muted)" }}>({t.category})</span>
+                  {t.date.slice(0, 10)} · {t.merchant} · <strong>{$(t.amount)}</strong> <span style={{ color: "var(--text-muted)" }}>({catName(t.category)})</span>
               </div>
             ))}
           </div>
@@ -478,7 +529,7 @@ export default function App() {
       {/* Scan page */}
       {activeTab === "scan" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Scan a receipt</h2>
+          <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>{t("scan_receipt")}</h2>
 
           <button
             className="action-card"
@@ -497,8 +548,8 @@ export default function App() {
             <div style={{ width: 72, height: 72, borderRadius: "50%", background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Camera size={36} color="var(--accent)" strokeWidth={1.5} />
             </div>
-            <div style={{ fontWeight: 600, fontSize: 16 }}>Tap to capture a receipt</div>
-            <div style={{ color: "var(--text-muted)", fontSize: 12 }}>Uses your camera — we'll read it with OCR</div>
+            <div style={{ fontWeight: 600, fontSize: 16 }}>{t("tap_capture")}</div>
+            <div style={{ color: "var(--text-muted)", fontSize: 12 }}>{t("uses_camera")}</div>
           </button>
 
           <button
@@ -514,7 +565,7 @@ export default function App() {
               boxShadow: "0 2px 10px rgba(0,0,0,0.03)"
             }}
           >
-            or choose from gallery / PDF
+            {t("or_gallery")}
           </button>
 
 
@@ -531,22 +582,22 @@ export default function App() {
           />
 
           <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>
-            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>Receipt category</div>
+            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>{t("receipt_category")}</div>
             <select
               value={receiptCategory}
               onChange={(e) => setReceiptCategory(e.target.value)}
               style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "#fff" }}
             >
               {["groceries", "dining", "transport", "shopping", "utilities", "entertainment", "health", "travel"].map((c) => (
-                <option key={c} value={c}>{c}</option>
+                <option key={c} value={c}>{catName(c)}</option>
               ))}
-              <option value="__other__">Other…</option>
+              <option value="__other__">{t("other")}</option>
             </select>
             {receiptCategory === "__other__" && (
               <input
                 value={customCategory}
                 onChange={(e) => setCustomCategory(e.target.value)}
-                placeholder="Type a new category, e.g. pets"
+                placeholder={t("type_new_category")}
                 style={{ width: "100%", marginTop: 10, padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "#fff" }}
               />
             )}
@@ -561,7 +612,7 @@ export default function App() {
               boxShadow: "0 2px 10px rgba(0,0,0,0.03)",
             }}>
               <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 14, color: "var(--text-main)" }}>
-                Scanning receipt…
+                {t("scanning")}
               </div>
 
               {/* Modern scan viewport */}
@@ -604,14 +655,14 @@ export default function App() {
               </div>
 
               <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 14 }}>
-                AI is extracting merchant, date & total…
+                {aiEnabled ? "AI is extracting merchant, date & total…" : t("detecting_edges")}
               </div>
             </div>
           )}
 
           {receiptPreview && !processing && (
             <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>
-              <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>Scanned document</div>
+              <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>{t("scanned_document")}</div>
 
               {receiptOriginal && (
                 <div className="morph-panel" style={{ background: "#fff", borderRadius: 12, overflow: "hidden", padding: 6, boxShadow: "0 2px 10px rgba(0,0,0,0.08)", position: "relative" }}>
@@ -621,7 +672,7 @@ export default function App() {
 
               {confirming && (
                 <div style={{ background: "#f4f4f6", borderRadius: 12, padding: 14, marginTop: 4 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>Confirm total amount</div>
+                  <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>{t("confirm_total")}</div>
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <span style={{ fontSize: 16, fontWeight: 700 }}>{currency === "RM" ? "RM" : "$"}</span>
                     <input
@@ -634,21 +685,21 @@ export default function App() {
                     />
                   </div>
                   <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>
-                    Check it against the receipt — correct it if wrong.
+                    {t("check_against_receipt")}
                   </div>
                   <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                     <button onClick={saveEditedTotal} style={{ flex: 1, background: "#111111", borderRadius: 12, padding: 12, color: "#fff", fontWeight: 600 }}>
-                      Save
+                      {t("save")}
                     </button>
                     <button onClick={resetScan} className="secondary" style={{ flex: 1, background: "#eceafb", color: "#6c5ce7", borderRadius: 12, padding: 12, fontWeight: 600 }}>
-                      Re-scan
+                      {t("rescan")}
                     </button>
                   </div>
                 </div>
               )}
 
               <button onClick={resetScan} style={{ width: "100%", marginTop: 4, background: "#111111", borderRadius: 12, padding: 14, color: "#fff", fontWeight: 600 }}>
-                Done
+                {t("done")}
               </button>
             </div>
           )}
@@ -663,7 +714,7 @@ export default function App() {
           <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Alerts & Anomalies</h2>
           {anomalies.length === 0 ? (
             <div style={{ background: "var(--card)", borderRadius: 20, padding: 32, textAlign: "center", color: "var(--text-muted)", fontSize: 14 }}>
-              No unusual spending detected. Looking good!
+              {t("no_unusual")}
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -673,7 +724,7 @@ export default function App() {
                     <strong style={{ fontSize: 15 }}>{a.merchant}</strong>
                     <strong style={{ fontSize: 15 }}>{$(a.amount)}</strong>
                   </div>
-                  <div style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 8 }}>{a.category}</div>
+                  <div style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 8 }}>{catName(a.category)}</div>
                   <div style={{ color: "var(--orange)", fontSize: 13, fontWeight: 600 }}>
                     <AlertTriangle size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: 4 }} />
                     {a.deviation_pct}% above your typical ${a.threshold} threshold
@@ -688,23 +739,23 @@ export default function App() {
       {/* Dashboard page */}
       {activeTab === "dashboard" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Dashboard</h2>
+          <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>{t("dashboard")}</h2>
 
           <div style={{ background: "linear-gradient(135deg, #6c5ce7, #a29bfe)", borderRadius: 20, padding: 18, color: "#fff", boxShadow: "0 2px 10px rgba(108,92,231,0.25)" }}>
-            <div style={{ fontWeight: 600, fontSize: 14, opacity: 0.9, marginBottom: 6 }}>✨ AI Summary</div>
+            <div style={{ fontWeight: 600, fontSize: 14, opacity: 0.9, marginBottom: 6 }}>{t("ai_summary")}</div>
             {dashSummary === null
-              ? <div style={{ fontSize: 13, opacity: 0.85 }}>Generating summary…</div>
+              ? <div style={{ fontSize: 13, opacity: 0.85 }}>{t("generating_summary")}</div>
               : <div style={{ fontSize: 14, lineHeight: 1.5 }}>{dashSummary}</div>}
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-            <MiniStat label="Today" value={$(dash.today)} tint="#eceafb" color="#6c5ce7" />
-            <MiniStat label="This week" value={$(dash.week)} tint="#e3f4ef" color="#00b894" />
-            <MiniStat label="This month" value={$(dash.month)} tint="#fff4e3" color="#f2994a" />
+            <MiniStat label={t("today")} value={$(dash.today)} tint="#eceafb" color="#6c5ce7" />
+            <MiniStat label={t("this_week")} value={$(dash.week)} tint="#e3f4ef" color="#00b894" />
+            <MiniStat label={t("this_month")} value={$(dash.month)} tint="#fff4e3" color="#f2994a" />
           </div>
 
           <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>
-            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 10 }}>Spending by month</div>
+            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 10 }}>{t("spending_by_month")}</div>
             {dash.monthly.map((m) => {
               const max = Math.max(...dash.monthly.map((x) => x.total), 1);
               return (
@@ -722,27 +773,27 @@ export default function App() {
           </div>
 
           <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>
-            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 10 }}>By category</div>
+            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 10 }}>{t("by_category")}</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {dash.byCategory.map((c) => (
                 <span key={c.category} style={{ background: "var(--bg)", borderRadius: 20, padding: "6px 12px", fontSize: 13 }}>
-                  {c.category} · <strong>{$(c.total)}</strong>
+                  {catName(c.category)} · <strong>{$(c.total)}</strong>
                 </span>
               ))}
             </div>
           </div>
 
           <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>
-            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 10 }}>Transactions</div>
+            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 10 }}>{t("transactions")}</div>
             <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
               <select
                 value={dashFilter.category}
                 onChange={(e) => setDashFilter((f) => ({ ...f, category: e.target.value }))}
                 style={{ flex: 1, minWidth: 120, padding: 8, borderRadius: 10, border: "1px solid var(--border)", background: "#fff" }}
               >
-                <option value="">All categories</option>
+                <option value="">{t("all_categories")}</option>
                 {dash.byCategory.map((c) => (
-                  <option key={c.category} value={c.category}>{c.category}</option>
+                  <option key={c.category} value={c.category}>{catName(c.category)}</option>
                 ))}
               </select>
               <select
@@ -750,17 +801,17 @@ export default function App() {
                 onChange={(e) => setDashFilter((f) => ({ ...f, period: e.target.value }))}
                 style={{ flex: 1, minWidth: 120, padding: 8, borderRadius: 10, border: "1px solid var(--border)", background: "#fff" }}
               >
-                <option value="">All time</option>
-                <option value="today">Today</option>
-                <option value="week">This week</option>
-                <option value="month">This month</option>
+                <option value="">{t("all_time")}</option>
+                <option value="today">{t("today")}</option>
+                <option value="week">{t("this_week")}</option>
+                <option value="month">{t("this_month")}</option>
               </select>
             </div>
             <div style={{ maxHeight: 300, overflowY: "auto" }}>
-              {dashFiltered.length === 0 && <div style={{ color: "var(--text-muted)", fontSize: 13 }}>No transactions match.</div>}
+              {dashFiltered.length === 0 && <div style={{ color: "var(--text-muted)", fontSize: 13 }}>{t("no_transactions_match")}</div>}
               {dashFiltered.map((t) => (
                 <div key={t.id} style={{ fontSize: 13, padding: "6px 0", borderTop: "1px solid var(--border)" }}>
-                  {t.date.slice(0, 10)} · {t.merchant} · <strong>{$(t.amount)}</strong> <span style={{ color: "var(--text-muted)" }}>({t.category})</span>
+                {t.date.slice(0, 10)} · {t.merchant} · <strong>{$(t.amount)}</strong> <span style={{ color: "var(--text-muted)" }}>({catName(t.category)})</span>
                 </div>
               ))}
             </div>
@@ -771,10 +822,25 @@ export default function App() {
       {/* Settings page */}
       {activeTab === "settings" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Settings</h2>
+          <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>{t("settings")}</h2>
 
           <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>
-            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 10 }}>Currency</div>
+            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 10 }}>Language / Bahasa</div>
+            <select
+              value={lang}
+              onChange={(e) => {
+                setLang(e.target.value);
+                localStorage.setItem("lang", e.target.value);
+              }}
+              style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "#fff", fontWeight: 600 }}
+            >
+              <option value="en">English</option>
+              <option value="ms">Bahasa Melayu</option>
+            </select>
+          </div>
+
+          <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>
+            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 10 }}>{t("currency")}</div>
             <select
               value={currency}
               onChange={(e) => {
@@ -787,14 +853,78 @@ export default function App() {
               <option value="RM">Ringgit (RM)</option>
             </select>
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10 }}>
-              Affects all amounts shown across the app.
+              {t("affects_amounts")}
             </div>
           </div>
 
           <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>
-            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 6 }}>About</div>
+            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 10 }}>{t("default_category")}</div>
+            <select
+              value={defaultCategory}
+              onChange={(e) => {
+                setDefaultCategory(e.target.value);
+                localStorage.setItem("defaultCategory", e.target.value);
+                setReceiptCategory(e.target.value);
+              }}
+              style={{ width: "100%", padding: 12, borderRadius: 12, border: "1px solid var(--border)", background: "#fff", fontWeight: 600 }}
+            >
+              {["groceries", "dining", "transport", "shopping", "utilities", "entertainment", "health", "travel"].map((c) => (
+                <option key={c} value={c}>{catName(c)}</option>
+              ))}
+            </select>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10 }}>
+              {t("pre_selected")}
+            </div>
+          </div>
+
+          <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 15 }}>{t("ai_assistance")}</div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+                  {t("ai_desc")}
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  const next = !aiEnabled;
+                  setAiEnabled(next);
+                  localStorage.setItem("aiEnabled", next ? "on" : "off");
+                }}
+                style={{
+                  width: 52,
+                  height: 30,
+                  borderRadius: 15,
+                  background: aiEnabled ? "#6c5ce7" : "#ccc",
+                  position: "relative",
+                  transition: "background 0.2s",
+                  flexShrink: 0
+                }}
+              >
+                <span style={{
+                  position: "absolute",
+                  top: 3,
+                  left: aiEnabled ? 25 : 3,
+                  width: 24,
+                  height: 24,
+                  borderRadius: "50%",
+                  background: "#fff",
+                  transition: "left 0.2s",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.2)"
+                }} />
+              </button>
+            </div>
+            {!aiEnabled && (
+              <div style={{ fontSize: 12, color: "var(--orange)", marginTop: 10 }}>
+                {t("ai_off_note")}
+              </div>
+            )}
+          </div>
+
+          <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>
+            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 6 }}>{t("about")}</div>
             <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-              Receipt Tracker — scan receipts, ask about your spending, detect unusual charges, all with AI.
+              {t("app.name")} — {t("app.tagline")}
             </div>
           </div>
         </div>
@@ -804,7 +934,7 @@ export default function App() {
       {activeTab === "receipts" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Receipts</h2>
+            <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>{t("receipts")}</h2>
             {receipts.length > 0 && (
               <button
                 onClick={() => setSelectMode(!selectMode)}
@@ -817,17 +947,60 @@ export default function App() {
                   fontSize: 13
                 }}
               >
-                {selectMode ? "Cancel" : "Select"}
+                {selectMode ? t("cancel") : t("select")}
               </button>
             )}
           </div>
+
+          {receipts.length > 0 && (
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{ display: "flex", gap: 6, flex: 1 }}>
+                {[
+                  ["all", t("all_time")],
+                  ["day", t("today")],
+                  ["week", t("this_week")],
+                  ["month", t("this_month")],
+                ].map(([val, label]) => (
+                  <button
+                    key={val}
+                    onClick={() => setReceiptFilter(val)}
+                    style={{
+                      flex: 1,
+                      background: receiptFilter === val ? "#111111" : "#eceafb",
+                      color: receiptFilter === val ? "#fff" : "#6c5ce7",
+                      borderRadius: 10,
+                      padding: "8px 0",
+                      fontWeight: 600,
+                      fontSize: 12
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={exportCsv}
+                title="Export CSV"
+                style={{
+                  background: "#e3f4ef",
+                  color: "#00b894",
+                  borderRadius: 10,
+                  padding: "8px 12px",
+                  fontWeight: 600,
+                  fontSize: 12
+                }}
+              >
+                CSV
+              </button>
+            </div>
+          )}
 
           {selectMode && (
             <div style={{ background: "#fff4f0", border: "1px solid #ffd8cc", borderRadius: 12, padding: 12 }}>
               <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 8 }}>
                 {selectedForDelete.length === 0
-                  ? "Tap receipts to select"
-                  : `${selectedForDelete.length} selected`}
+                  ? t("tap_to_select")
+                  : t("selected_count", { n: selectedForDelete.length })}
               </div>
               <button
                 onClick={deleteSelectedReceipts}
@@ -842,19 +1015,25 @@ export default function App() {
                   opacity: selectedForDelete.length === 0 ? 0.5 : 1
                 }}
               >
-                Delete selected
+                {t("delete_selected")}
               </button>
             </div>
           )}
 
           {receipts.length === 0 && (
             <div style={{ background: "var(--card)", borderRadius: 20, padding: 32, textAlign: "center", color: "var(--text-muted)", fontSize: 14 }}>
-              No receipts yet. Scan a receipt to add one.
+              {t("no_receipts_yet")}
+            </div>
+          )}
+
+          {receipts.length > 0 && filteredReceipts.length === 0 && (
+            <div style={{ background: "var(--card)", borderRadius: 20, padding: 24, textAlign: "center", color: "var(--text-muted)", fontSize: 14 }}>
+              {t("no_transactions_match")}
             </div>
           )}
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            {receipts.map((r) => {
+            {filteredReceipts.map((r) => {
               const isSel = selectedForDelete.includes(r.id);
               return (
                 <button
@@ -953,7 +1132,7 @@ export default function App() {
                       cursor: "pointer"
                     }}
                   >
-                    Close
+                    {t("close")}
                   </button>
                 </div>
                 

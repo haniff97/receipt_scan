@@ -10,7 +10,7 @@ router = APIRouter()
 
 
 @router.get("/query")
-def query(q: str, db: Session = Depends(get_db)):
+def query(q: str, lang: str = "en", db: Session = Depends(get_db)):
     transactions = db.query(Transaction).order_by(Transaction.date.desc()).all()
     data = [
         {
@@ -22,7 +22,7 @@ def query(q: str, db: Session = Depends(get_db)):
         for t in transactions
     ]
 
-    ai = answer_question(q, data)
+    ai = answer_question(q, data, lang=lang)
     if ai:
         return {**ai, "source": "deepseek"}
 

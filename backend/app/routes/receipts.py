@@ -25,8 +25,10 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 async def upload_receipt(
     file: UploadFile = File(...),
     category: str = "groceries",
+    ai: str = "on",
     db: Session = Depends(get_db),
 ):
+    ai_on = ai.lower() != "off"
     image_bytes = await file.read()
     is_pdf_file = image_bytes[:5] == b"%PDF-"
 
@@ -45,7 +47,7 @@ async def upload_receipt(
 
     # 1) PRIMARY: Gemini vision reads the corrected image (most accurate)
     ai = None
-    if not is_pdf_file:
+    if ai_on and not is_pdf_file:
         ai = extract_receipt(gemini_bytes, mime="image/jpeg")
 
     # 2) FALLBACK: tesseract OCR + DeepSeek cleanup
@@ -73,7 +75,7 @@ async def upload_receipt(
 
     parsed = parse_receipt(text) if text else {"total": None, "merchant": "Unknown", "date": None}
 
-    if ai is None:
+    if ai is None and ai_on:
         ai = enhance_ocr(text)
     if ai and ai.get("total"):
         total = verify_and_correct_total(ai)
@@ -91,15 +93,16 @@ async def upload_receipt(
         if tx_date > now_dt + timedelta(days=1) or tx_date < now_dt - timedelta(days=365):
             tx_date = now_dt
     else:
-        parsed = parse_receipt(text)
-        if parsed["total"] is None:
+        parsed = parse_receipt(text) if text else {"total": None, "merchant": "Unknown", "date": None}
+        if parsed["total"] is None and ai_on:
             raise HTTPException(
                 status_code=422,
                 detail="Could not find a total amount on the receipt. "
                        f"OCR text was: {text[:300]}",
             )
-        total = parsed["total"]
-        merchant = parsed["merchant"]
+        # Manual mode (AI off): allow 0.0 total — user will fill it in on the client.
+        total = parsed["total"] if parsed["total"] is not None else 0.0
+        merchant = parsed["merchant"] or "Unknown"
         tx_date = parsed["date"] or datetime.now()
 
     receipt = Receipt(filename=file.filename or "receipt.png", ocr_text=text)

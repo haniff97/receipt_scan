@@ -116,13 +116,18 @@ def verify_and_correct_total(ai):
     return round(ai_total, 2)
 
 
-def summarize_spending(dashboard_data, currency="$"):
+def summarize_spending(dashboard_data, currency="$", lang="en"):
     """Generate a friendly plain-English summary of the dashboard."""
+    lang_instruction = (
+        "Reply in Bahasa Melayu."
+        if lang == "ms"
+        else "Reply in English."
+    )
     messages = [
         {
             "role": "system",
             "content": (
-                "You are a personal finance assistant. Summarize the user's spending "
+                f"{lang_instruction} You are a personal finance assistant. Summarize the user's spending "
                 "in 2-4 concise, friendly sentences. Highlight the biggest category, "
                 "how this month compares to last, and any notable changes. "
                 f"Use the currency symbol '{currency}' before every amount "
@@ -135,18 +140,23 @@ def summarize_spending(dashboard_data, currency="$"):
     return _chat(messages, temperature=0.5)
 
 
-def answer_question(question, transactions):
+def answer_question(question, transactions, lang="en"):
     """Answer a natural-language question using real transaction data via DeepSeek.
 
     Returns a dict matching the rule-based NLQ shape:
     {answer, filters, transactions} — or None if unavailable/failed.
     """
+    lang_instruction = (
+        "Reply in Bahasa Melayu."
+        if lang == "ms"
+        else "Reply in English."
+    )
     sample = transactions[:200]
     messages = [
         {
             "role": "system",
             "content": (
-                "You are a personal finance assistant with access to the user's "
+                f"{lang_instruction} You are a personal finance assistant with access to the user's "
                 "transactions. Answer their question accurately using the data. "
                 "Return ONLY valid JSON with keys: "
                 '"answer" (string, 1-2 sentences with RM amounts), '
@@ -180,18 +190,23 @@ def answer_question(question, transactions):
         return None
 
 
-def judge_anomalies(candidates, context):
+def judge_anomalies(candidates, context, lang="en"):
     """Let DeepSeek decide which candidate transactions are true anomalies.
 
     candidates: list of {id, date, merchant, amount, category, vs_median, threshold}
     context:    summary of each category (median, typical range) for grounding.
     Returns a dict {confirmed: [...], rejected: [...], reasons: {...}} or None.
     """
+    lang_instruction = (
+        "Write the explanations in Bahasa Melayu."
+        if lang == "ms"
+        else "Write the explanations in English."
+    )
     messages = [
         {
             "role": "system",
             "content": (
-                "You are a fraud/finance analyst reviewing potential spending anomalies. "
+                f"{lang_instruction} You are a fraud/finance analyst reviewing potential spending anomalies. "
                 "A candidate was statistically flagged because its amount is well above "
                 "the typical range for its category. Decide if it is a GENUINE anomaly "
                 "(e.g. a large one-off or suspicious purchase) or a NORMAL expense "

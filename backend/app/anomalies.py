@@ -25,10 +25,11 @@ def detect_anomalies(transactions, method="iqr", k=1.5):
 
     flagged = []
     for cat, amounts in by_cat.items():
-        if len(amounts) < 4:
+        if len(amounts) < 2:
             continue
 
-        if method == "iqr":
+        if len(amounts) >= 6:
+            # IQR fences (robust for larger samples)
             sorted_a = sorted(amounts)
             n = len(sorted_a)
             q1 = sorted_a[n // 4]
@@ -38,12 +39,10 @@ def detect_anomalies(transactions, method="iqr", k=1.5):
                 continue
             upper = q3 + k * iqr
         else:
-            mean = sum(amounts) / len(amounts)
-            var = sum((a - mean) ** 2 for a in amounts) / len(amounts)
-            std = var ** 0.5
-            if std == 0:
-                continue
-            upper = mean + k * std
+            # Small sample (2-5 items): IQR is unstable (the anomaly skews its own
+            # quartiles), so flag anything > 2x the max of the others.
+            sorted_a = sorted(amounts)
+            upper = sorted_a[-2] * 2 if len(sorted_a) >= 2 else 0
 
         for t in txs:
             if t["category"] == cat and t["amount"] > upper:

@@ -43,6 +43,7 @@ export default function App() {
   const [showAlerts, setShowAlerts] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [showNotify, setShowNotify] = useState(false);
+  const [seenAnomalyIds, setSeenAnomalyIds] = useState([]);
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [selectMode, setSelectMode] = useState(false);
   const [receiptFilter, setReceiptFilter] = useState("all");
@@ -100,9 +101,12 @@ export default function App() {
   }, [activeTab]);
 
   useEffect(() => {
-    if (anomalies.length > 0 && !showAlerts) {
+    if (anomalies.length === 0) return;
+    const newIds = anomalies.map((a) => a.id).filter((id) => !seenAnomalyIds.includes(id));
+    if (newIds.length > 0) {
       setShowNotify(true);
-      const timer = setTimeout(() => setShowNotify(false), 5000);
+      setSeenAnomalyIds((prev) => [...prev, ...newIds]);
+      const timer = setTimeout(() => setShowNotify(false), 6000);
       return () => clearTimeout(timer);
     }
   }, [anomalies]);

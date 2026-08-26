@@ -59,6 +59,8 @@ export default function App() {
   const [manualDate, setManualDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [msg, setMsg] = useState("");
   const [feedbackText, setFeedbackText] = useState("");
+  const [showAddTx, setShowAddTx] = useState(false);
+  const [addForm, setAddForm] = useState({ merchant: "", amount: "", category: "groceries", date: new Date().toISOString().slice(0, 10) });
   const [editingTx, setEditingTx] = useState(null);
   const [editForm, setEditForm] = useState({ merchant: "", amount: "", category: "", date: "" });
   const searchRef = useRef(null);
@@ -177,6 +179,7 @@ export default function App() {
 
   const deleteSelectedReceipts = async () => {
     if (selectedForDelete.length === 0) return;
+    if (!window.confirm(t("confirm_delete_receipts", { n: selectedForDelete.length }))) return;
     try {
       await Promise.all(
         selectedForDelete.map((id) => axios.delete(`${API}/receipts/${id}`))
@@ -184,6 +187,29 @@ export default function App() {
       setSelectedForDelete([]);
       setSelectMode(false);
       setMsg(t("deleted"));
+      await refresh();
+    } catch (err) {
+      setMsg(err.response?.data?.detail || t("delete_failed"));
+    }
+  };
+
+  const addTransaction = async () => {
+    const amount = parseFloat(addForm.amount);
+    if (isNaN(amount) || amount <= 0) {
+      setMsg(t("upload_failed"));
+      return;
+    }
+    try {
+      await axios.post(`${API}/transactions`, {
+        date: new Date(addForm.date || new Date().toISOString().slice(0, 10)).toISOString(),
+        amount,
+        merchant: addForm.merchant.trim() || "Unknown",
+        category: addForm.category,
+        description: "",
+      });
+      setShowAddTx(false);
+      setAddForm({ merchant: "", amount: "", category: "groceries", date: new Date().toISOString().slice(0, 10) });
+      setMsg(t("saved"));
       await refresh();
     } catch (err) {
       setMsg(err.response?.data?.detail || t("delete_failed"));
@@ -219,6 +245,7 @@ export default function App() {
   };
 
   const deleteTransaction = async (id) => {
+    if (!window.confirm(t("confirm_delete"))) return;
     try {
       await axios.delete(`${API}/transactions/${id}`);
       setMsg(t("deleted"));
@@ -875,7 +902,26 @@ export default function App() {
       {/* Dashboard page */}
       {activeTab === "dashboard" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>{t("dashboard")}</h2>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>{t("dashboard")}</h2>
+            <button
+              onClick={() => setShowAddTx(true)}
+              style={{
+                background: "#111111",
+                color: "#fff",
+                borderRadius: 12,
+                padding: "8px 14px",
+                fontWeight: 600,
+                fontSize: 13,
+                display: "flex",
+                alignItems: "center",
+                gap: 6
+              }}
+            >
+              <Plus size={16} strokeWidth={2} />
+              {t("add_tx")}
+            </button>
+          </div>
 
           <div style={{ background: "linear-gradient(135deg, #6c5ce7, #a29bfe)", borderRadius: 20, padding: 18, color: "#fff", boxShadow: "0 2px 10px rgba(108,92,231,0.25)" }}>
             <div style={{ fontWeight: 600, fontSize: 14, opacity: 0.9, marginBottom: 6 }}>{t("ai_summary")}</div>
@@ -958,6 +1004,86 @@ export default function App() {
                   </button>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add transaction modal */}
+      {showAddTx && (
+        <div
+          onClick={() => setShowAddTx(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 100,
+            padding: 20
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: 20,
+              width: "100%",
+              maxWidth: 360,
+              padding: 20,
+              display: "flex",
+              flexDirection: "column",
+              gap: 10
+            }}
+          >
+            <div style={{ fontWeight: 700, fontSize: 16 }}>{t("add_tx")}</div>
+
+            <label style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("merchant")}</label>
+            <input
+              value={addForm.merchant}
+              onChange={(e) => setAddForm((f) => ({ ...f, merchant: e.target.value }))}
+              placeholder={t("merchant")}
+              style={{ padding: 10, borderRadius: 10, border: "1px solid var(--border)", fontFamily: "inherit" }}
+            />
+
+            <label style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("amount")}</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={addForm.amount}
+              onChange={(e) => setAddForm((f) => ({ ...f, amount: e.target.value }))}
+              placeholder="0.00"
+              style={{ padding: 10, borderRadius: 10, border: "1px solid var(--border)", fontFamily: "inherit" }}
+            />
+
+            <label style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("category")}</label>
+            <select
+              value={addForm.category}
+              onChange={(e) => setAddForm((f) => ({ ...f, category: e.target.value }))}
+              style={{ padding: 10, borderRadius: 10, border: "1px solid var(--border)", fontFamily: "inherit", background: "#fff" }}
+            >
+              {["groceries", "dining", "transport", "shopping", "utilities", "entertainment", "health", "travel", "other"].map((c) => (
+                <option key={c} value={c}>{catName(c)}</option>
+              ))}
+            </select>
+
+            <label style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("date")}</label>
+            <input
+              type="date"
+              value={addForm.date}
+              onChange={(e) => setAddForm((f) => ({ ...f, date: e.target.value }))}
+              style={{ padding: 10, borderRadius: 10, border: "1px solid var(--border)", fontFamily: "inherit" }}
+            />
+
+            <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+              <button onClick={addTransaction} style={{ flex: 1, background: "#111111", color: "#fff", borderRadius: 12, padding: 12, fontWeight: 600 }}>
+                {t("save")}
+              </button>
+              <button onClick={() => setShowAddTx(false)} className="secondary" style={{ flex: 1, background: "#eceafb", color: "#6c5ce7", borderRadius: 12, padding: 12, fontWeight: 600 }}>
+                {t("cancel")}
+              </button>
             </div>
           </div>
         </div>
@@ -1123,6 +1249,7 @@ export default function App() {
             )}
           </div>
 
+          {false && (
           <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>
             <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>{t("feedback")}</div>
             <textarea
@@ -1150,6 +1277,7 @@ export default function App() {
               {t("feedback_note")}
             </div>
           </div>
+          )}
 
           <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>
             <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 6 }}>{t("about")}</div>
@@ -1350,21 +1478,48 @@ export default function App() {
                   <div style={{ fontWeight: 600, fontSize: 16, color: "var(--text-main)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, paddingRight: 12 }}>
                     {selectedReceipt.filename}
                   </div>
-                  <button 
-                    onClick={() => setSelectedReceipt(null)}
-                    style={{
-                      padding: "6px 16px",
-                      background: "var(--bg)",
-                      color: "var(--text-main)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 16,
-                      fontSize: 14,
-                      fontWeight: 600,
-                      cursor: "pointer"
-                    }}
-                  >
-                    {t("close")}
-                  </button>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {transactions.find((t) => t.receipt_id === selectedReceipt.id) && (
+                      <button
+                        onClick={() => {
+                          const tx = transactions.find((t) => t.receipt_id === selectedReceipt.id);
+                          startEditTx(tx);
+                          setSelectedReceipt(null);
+                        }}
+                        style={{
+                          padding: "6px 14px",
+                          background: "#eceafb",
+                          color: "#6c5ce7",
+                          border: "none",
+                          borderRadius: 16,
+                          fontSize: 14,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6
+                        }}
+                      >
+                        <Pencil size={14} />
+                        {t("edit_transaction")}
+                      </button>
+                    )}
+                    <button 
+                      onClick={() => setSelectedReceipt(null)}
+                      style={{
+                        padding: "6px 16px",
+                        background: "var(--bg)",
+                        color: "var(--text-main)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 16,
+                        fontSize: 14,
+                        fontWeight: 600,
+                        cursor: "pointer"
+                      }}
+                    >
+                      {t("close")}
+                    </button>
+                  </div>
                 </div>
                 
                 <div style={{ overflowY: "auto", flex: 1, borderRadius: 12 }}>

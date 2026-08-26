@@ -226,13 +226,14 @@ def answer_question(question, transactions, lang="en"):
         return None
 
 
-def judge_anomalies(candidates, context, lang="en"):
+def judge_anomalies(candidates, context, lang="en", currency="$"):
     """Let DeepSeek decide which candidate transactions are true anomalies.
 
     candidates: list of {id, date, merchant, amount, category, vs_median, threshold}
     context:    summary of each category (median, typical range) for grounding.
     Returns a dict {confirmed: [...], rejected: [...], reasons: {...}} or None.
     """
+    currency_symbol = "RM" if currency == "RM" else "$"
     lang_instruction = (
         "Write the explanations in Bahasa Melayu."
         if lang == "ms"
@@ -247,6 +248,7 @@ def judge_anomalies(candidates, context, lang="en"):
                 "the typical range for its category. Decide if it is a GENUINE anomaly "
                 "(e.g. a large one-off or suspicious purchase) or a NORMAL expense "
                 "(e.g. annual bills, family events, big but expected purchases). "
+                f"Write amounts with the currency symbol '{currency_symbol}' (e.g. '{currency_symbol}1798'). "
                 "Return ONLY valid JSON: "
                 '{"confirmed":[ids...], "rejected":[ids...], '
                 '"reasons":{"<id>":"short explanation"}}. '

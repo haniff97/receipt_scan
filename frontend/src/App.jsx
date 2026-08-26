@@ -72,7 +72,7 @@ export default function App() {
     try {
       const [s, a, r, d, t, sm] = await Promise.allSettled([
         axios.get(`${API}/stats`),
-        axios.get(`${API}/anomalies`, { params: { lang } }),
+        axios.get(`${API}/anomalies`, { params: { lang, currency } }),
         axios.get(`${API}/receipts`),
         axios.get(`${API}/dashboard`),
         axios.get(`${API}/transactions`),
@@ -894,7 +894,7 @@ export default function App() {
                   <div style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 8 }}>{catName(a.category)}</div>
                   <div style={{ color: "var(--orange)", fontSize: 13, fontWeight: 600 }}>
                     <AlertTriangle size={14} style={{ display: "inline", verticalAlign: "middle", marginRight: 4 }} />
-                    {a.deviation_pct}% above your typical ${a.threshold} threshold
+                    {a.deviation_pct}% above your typical {$(a.threshold)} threshold
                   </div>
                 </div>
               ))}

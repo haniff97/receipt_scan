@@ -12,7 +12,7 @@ router = APIRouter()
 
 
 @router.get("/anomalies")
-def anomalies(method: str = "iqr", lang: str = "en", db: Session = Depends(get_db)):
+def anomalies(method: str = "iqr", lang: str = "en", currency: str = "$", db: Session = Depends(get_db)):
     transactions = db.query(Transaction).all()
     flagged = detect_anomalies(transactions, method=method)
 
@@ -38,7 +38,7 @@ def anomalies(method: str = "iqr", lang: str = "en", db: Session = Depends(get_d
             for t in flagged
         ]
 
-        decision = judge_anomalies(candidates, context, lang=lang)
+        decision = judge_anomalies(candidates, context, lang=lang, currency=currency)
         if decision:
             reasons = decision.get("reasons", {})
             confirmed = [t for t in flagged if t["id"] in decision.get("confirmed", [])]

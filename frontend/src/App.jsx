@@ -28,6 +28,23 @@ export default function App() {
   const [lang, setLang] = useState(() => localStorage.getItem("lang") || "en");
   const t = (k, v) => translate(lang, k, v);
   const catName = (c) => t(`cat.${c}`);
+  const reliefName = (r) => {
+    const names = {
+      medical: t("relief.medical"),
+      medical_exam: t("relief.medical_exam"),
+      education: t("relief.education"),
+      lifestyle: t("relief.lifestyle"),
+      sports: t("relief.sports"),
+      childcare: t("relief.childcare"),
+      travel: t("relief.travel"),
+      insurance: t("relief.insurance"),
+      breastfeeding: t("relief.breastfeeding"),
+      parents_medical: t("relief.parents_medical"),
+      socso: t("relief.socso"),
+      epf_life: t("relief.epf_life"),
+    };
+    return names[r] || r;
+  };
   const [currency, setCurrency] = useState(() => localStorage.getItem("currency") || "RM");
   const [aiEnabled, setAiEnabled] = useState(() => localStorage.getItem("aiEnabled") !== "off");
   const [stats, setStats] = useState(null);
@@ -47,6 +64,8 @@ export default function App() {
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [selectMode, setSelectMode] = useState(false);
   const [receiptFilter, setReceiptFilter] = useState("all");
+  const [lhdnData, setLhdnData] = useState(null);
+  const [lhdnYear, setLhdnYear] = useState(new Date().getFullYear());
   const [selectedForDelete, setSelectedForDelete] = useState([]);
   const [receiptCategory, setReceiptCategory] = useState("groceries");
   const [customCategory, setCustomCategory] = useState("");
@@ -70,13 +89,14 @@ export default function App() {
 
   const refresh = async () => {
     try {
-      const [s, a, r, d, t, sm] = await Promise.allSettled([
+      const [s, a, r, d, t, sm, lh] = await Promise.allSettled([
         axios.get(`${API}/stats`),
         axios.get(`${API}/anomalies`, { params: { lang, currency } }),
         axios.get(`${API}/receipts`),
         axios.get(`${API}/dashboard`),
         axios.get(`${API}/transactions`),
         axios.get(`${API}/dashboard/summary`, { params: { currency, lang } }),
+        axios.get(`${API}/lhdn/relief`),
       ]);
       if (s.status === "fulfilled") setStats(s.value.data);
       if (a.status === "fulfilled") {
@@ -87,6 +107,7 @@ export default function App() {
       if (d.status === "fulfilled") setDash(d.value.data);
       if (t.status === "fulfilled") setTransactions(t.value.data);
       if (sm.status === "fulfilled") setDashSummary(sm.value.data.summary);
+      if (lh.status === "fulfilled") setLhdnData(lh.value.data);
     } catch (e) {
       setMsg(t("not_reachable"));
     }
@@ -1253,7 +1274,6 @@ export default function App() {
             )}
           </div>
 
-          {false && (
           <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>
             <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>{t("feedback")}</div>
             <textarea
@@ -1281,7 +1301,6 @@ export default function App() {
               {t("feedback_note")}
             </div>
           </div>
-          )}
 
           <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>
             <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 6 }}>{t("about")}</div>
@@ -1322,6 +1341,7 @@ export default function App() {
                   ["day", t("today")],
                   ["week", t("this_week")],
                   ["month", t("this_month")],
+                  ["lhdn", t("tax_relief")],
                 ].map(([val, label]) => (
                   <button
                     key={val}
@@ -1389,14 +1409,75 @@ export default function App() {
             </div>
           )}
 
-          {receipts.length > 0 && filteredReceipts.length === 0 && (
+          {receipts.length > 0 && filteredReceipts.length === 0 && receiptFilter !== "lhdn" && (
             <div style={{ background: "var(--card)", borderRadius: 20, padding: 24, textAlign: "center", color: "var(--text-muted)", fontSize: 14 }}>
               {t("no_transactions_match")}
             </div>
           )}
 
+          {/* Tax Relief view */}
+          {receiptFilter === "lhdn" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Tax year:</span>
+                <select
+                  value={lhdnYear}
+                  onChange={(e) => setLhdnYear(Number(e.target.value))}
+                  style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid var(--border)", background: "#fff", fontWeight: 600, fontSize: 13 }}
+                >
+                  {[...new Set([new Date().getFullYear(), new Date().getFullYear() - 1, ...((lhdnData || []).map((y) => y.year))])].sort().map((y) => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              </div>
+
+              {!lhdnData || lhdnData.length === 0 ? (
+                <div style={{ background: "var(--card)", borderRadius: 20, padding: 24, textAlign: "center", color: "var(--text-muted)", fontSize: 14 }}>
+                  No claimable receipts yet.
+                </div>
+              ) : (
+                (() => {
+                  const yr = lhdnData.find((y) => y.year === lhdnYear) || lhdnData[0];
+                  if (!yr || yr.reliefs.length === 0) {
+                    return <div style={{ background: "var(--card)", borderRadius: 20, padding: 24, textAlign: "center", color: "var(--text-muted)", fontSize: 14 }}>No claimable receipts for {lhdnYear}.</div>;
+                  }
+                  const totalClaimable = yr.reliefs.reduce((s, r) => s + r.claimable, 0);
+                  return (
+                    <>
+                      <div style={{ background: "linear-gradient(135deg, #f2994a, #f7b733)", borderRadius: 16, padding: 16, color: "#fff" }}>
+                        <div style={{ fontWeight: 600, fontSize: 13, opacity: 0.9 }}>Total claimable {lhdnYear}</div>
+                        <div style={{ fontSize: 24, fontWeight: 700 }}>{$(totalClaimable)}</div>
+                      </div>
+                      {yr.reliefs.map((r) => {
+                        const pct = r.cap ? Math.min(100, (r.spent / r.cap) * 100) : 0;
+                        return (
+                          <div key={r.relief} style={{ background: "var(--card)", borderRadius: 16, padding: 14, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <span style={{ fontWeight: 600, fontSize: 14 }}>{reliefName(r.relief)}</span>
+                              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                                {$(r.claimable)} {r.cap ? `/ ${$(r.cap)}` : ""}
+                              </span>
+                            </div>
+                            <div style={{ height: 8, background: "var(--border)", borderRadius: 4, marginTop: 8 }}>
+                              <div style={{ height: 8, width: `${pct}%`, background: pct >= 100 ? "#ff6b6b" : "#f2994a", borderRadius: 4 }} />
+                            </div>
+                            {r.spent > r.cap && (
+                              <div style={{ fontSize: 11, color: "var(--orange)", marginTop: 6 }}>
+                                Cap reached — only {$(r.cap)} is claimable.
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </>
+                  );
+                })()
+              )}
+            </div>
+          )}
+
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            {filteredReceipts.map((r) => {
+            {receiptFilter !== "lhdn" && filteredReceipts.map((r) => {
               const isSel = selectedForDelete.includes(r.id);
               return (
                 <button

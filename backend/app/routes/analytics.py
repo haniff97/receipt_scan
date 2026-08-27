@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from ..anomalies import detect_anomalies
-from ..database import get_db
+from ..database import get_db, current_user_id
 from ..deepseek import judge_anomalies
 from ..models import Transaction
 
@@ -13,7 +13,11 @@ router = APIRouter()
 
 @router.get("/anomalies")
 def anomalies(method: str = "iqr", lang: str = "en", currency: str = "$", db: Session = Depends(get_db)):
-    transactions = db.query(Transaction).all()
+    transactions = (
+        db.query(Transaction)
+        .filter(Transaction.user_id == current_user_id())
+        .all()
+    )
     flagged = detect_anomalies(transactions, method=method)
 
     if flagged:

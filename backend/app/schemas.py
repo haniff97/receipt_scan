@@ -18,6 +18,9 @@ class TransactionCreate(TransactionBase):
 class TransactionOut(TransactionBase):
     id: int
     receipt_id: int | None = None
+    lhdn_relief: str | None = None
+    lhdn_confidence: float | None = None
+    tax_year: int | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -41,3 +44,5 @@ class ReceiptCreateResponse(BaseModel):
     transaction_id: int | None = None
     amount: float | None = None
     merchant: str | None = None
+    lhdn_relief: str | None = None
+    lhdn_confidence: float | None = None

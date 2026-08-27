@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from ..deepseek import enhance_ocr, verify_and_correct_total
 from ..gemini import extract_receipt
-from ..database import get_db
+from ..database import get_db, current_user_id
 from ..models import Receipt, Transaction
 from ..schemas import ReceiptCreateResponse
 from ..ocr import ocr_image, open_as_image, parse_receipt, exif_correct_bytes
@@ -63,7 +63,7 @@ async def upload_receipt(
     if text:
         existing = (
             db.query(Receipt)
-            .filter(Receipt.ocr_text == text)
+            .filter(Receipt.ocr_text == text, Receipt.user_id == current_user_id())
             .first()
         )
         if existing:
@@ -105,7 +105,7 @@ async def upload_receipt(
         merchant = parsed["merchant"] or "Unknown"
         tx_date = parsed["date"] or datetime.now()
 
-    receipt = Receipt(filename=file.filename or "receipt.png", ocr_text=text)
+    receipt = Receipt(filename=file.filename or "receipt.png", ocr_text=text, user_id=current_user_id())
     db.add(receipt)
     db.flush()
 
@@ -120,6 +120,10 @@ async def upload_receipt(
         category=category,
         description=f"Uploaded from receipt: {receipt.filename}",
         receipt_id=receipt.id,
+        user_id=current_user_id(),
+        lhdn_relief=(ai or {}).get("lhdn_relief") if ai_on else None,
+        lhdn_confidence=(ai or {}).get("lhdn_confidence") if ai_on else None,
+        tax_year=tx_date.year if ai_on else None,
     )
     db.add(tx)
     db.commit()
@@ -135,12 +139,19 @@ async def upload_receipt(
         "transaction_id": tx.id,
         "amount": total,
         "merchant": merchant,
+        "lhdn_relief": tx.lhdn_relief,
+        "lhdn_confidence": tx.lhdn_confidence,
     }
 
 
 @router.get("/receipts")
 def list_receipts(db: Session = Depends(get_db)):
-    rows = db.query(Receipt).order_by(Receipt.uploaded_at.desc()).all()
+    rows = (
+        db.query(Receipt)
+        .filter(Receipt.user_id == current_user_id())
+        .order_by(Receipt.uploaded_at.desc())
+        .all()
+    )
     return [
         {
             "id": r.id,
@@ -155,13 +166,20 @@ def list_receipts(db: Session = Depends(get_db)):
 
 @router.delete("/receipts/{receipt_id}")
 def delete_receipt(receipt_id: int, db: Session = Depends(get_db)):
-    receipt = db.get(Receipt, receipt_id)
+    receipt = (
+        db.query(Receipt)
+        .filter(Receipt.id == receipt_id, Receipt.user_id == current_user_id())
+        .first()
+    )
     if not receipt:
         raise HTTPException(status_code=404, detail="Receipt not found")
     image_path = os.path.join(UPLOAD_DIR, f"{receipt.id}.png")
     if os.path.exists(image_path):
         os.remove(image_path)
-    db.query(Transaction).filter(Transaction.receipt_id == receipt_id).delete()
+    db.query(Transaction).filter(
+        Transaction.receipt_id == receipt_id,
+        Transaction.user_id == current_user_id(),
+    ).delete()
     db.delete(receipt)
     db.commit()
     return {"deleted": receipt_id}
@@ -169,7 +187,11 @@ def delete_receipt(receipt_id: int, db: Session = Depends(get_db)):
 
 @router.get("/receipts/{receipt_id}/image")
 def receipt_image(receipt_id: int, db: Session = Depends(get_db)):
-    receipt = db.get(Receipt, receipt_id)
+    receipt = (
+        db.query(Receipt)
+        .filter(Receipt.id == receipt_id, Receipt.user_id == current_user_id())
+        .first()
+    )
     if not receipt:
         raise HTTPException(status_code=404, detail="Receipt not found")
     image_path = os.path.join(UPLOAD_DIR, f"{receipt.id}.png")

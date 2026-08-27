@@ -65,9 +65,15 @@ PROMPT = (
     "4. If NO printed total line exists, sum the item prices, add any tax percentage shown "
     "(e.g. 6% SST), and set 'total_method' to 'computed'.\n"
     "5. Correct any misread digits (e.g. '4346' = 43.46, '25.5' = 25.50). Round to 2 decimals.\n"
+    "LHDN TAX RELIEF: decide whether this purchase is claimable as a Malaysian income-tax "
+    "relief, and if so under which LHDN relief category. Use 'lhdn_relief' from exactly one of: "
+    "medical, medical_exam, education, lifestyle, sports, childcare, travel, insurance, "
+    "breastfeeding, parents_medical, socso, epf_life, not_claimable, unknown. "
+    "Give 'lhdn_confidence' (0.0 to 1.0) for how sure you are.\n"
     f'Return ONLY valid JSON with keys: "merchant" (string), "total" (number), '
     f'"total_method" ("printed" or "computed"), "date" (YYYY-MM-DD or null), '
     f'"category" (one of: {CATEGORIES}), '
+    f'"lhdn_relief" (string), "lhdn_confidence" (number), '
     f'"items" (list of {{"name", "price"}}).'
 )
 

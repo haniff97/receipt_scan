@@ -5,7 +5,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..deepseek import summarize_spending
-from ..database import get_db
+from ..database import get_db, current_user_id
 from ..models import Receipt, Transaction
 from ..schemas import TransactionCreate, TransactionOut
 
@@ -22,7 +22,7 @@ def list_transactions(
     end: date | None = None,
     db: Session = Depends(get_db),
 ):
-    q = db.query(Transaction)
+    q = db.query(Transaction).filter(Transaction.user_id == current_user_id())
     if category:
         q = q.filter(Transaction.category == category)
     if start:
@@ -34,7 +34,7 @@ def list_transactions(
 
 @router.post("/transactions", response_model=TransactionOut)
 def create_transaction(payload: TransactionCreate, db: Session = Depends(get_db)):
-    tx = Transaction(**payload.model_dump())
+    tx = Transaction(**payload.model_dump(), user_id=current_user_id())
     db.add(tx)
     db.commit()
     db.refresh(tx)
@@ -43,7 +43,11 @@ def create_transaction(payload: TransactionCreate, db: Session = Depends(get_db)
 
 @router.delete("/transactions/{tx_id}")
 def delete_transaction(tx_id: int, db: Session = Depends(get_db)):
-    tx = db.get(Transaction, tx_id)
+    tx = (
+        db.query(Transaction)
+        .filter(Transaction.id == tx_id, Transaction.user_id == current_user_id())
+        .first()
+    )
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
     db.delete(tx)
@@ -53,7 +57,11 @@ def delete_transaction(tx_id: int, db: Session = Depends(get_db)):
 
 @router.patch("/transactions/{tx_id}", response_model=TransactionOut)
 def update_transaction(tx_id: int, payload: TransactionCreate, db: Session = Depends(get_db)):
-    tx = db.get(Transaction, tx_id)
+    tx = (
+        db.query(Transaction)
+        .filter(Transaction.id == tx_id, Transaction.user_id == current_user_id())
+        .first()
+    )
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
     for field, value in payload.model_dump().items():
@@ -67,6 +75,7 @@ def update_transaction(tx_id: int, payload: TransactionCreate, db: Session = Dep
 def categories(db: Session = Depends(get_db)):
     rows = (
         db.query(Transaction.category, func.count(Transaction.id), func.sum(Transaction.amount))
+        .filter(Transaction.user_id == current_user_id())
         .group_by(Transaction.category)
         .all()
     )
@@ -78,10 +87,11 @@ def categories(db: Session = Depends(get_db)):
 
 @router.get("/stats")
 def stats(db: Session = Depends(get_db)):
-    total = db.query(func.sum(Transaction.amount)).scalar() or 0
-    count = db.query(func.count(Transaction.id)).scalar() or 0
-    first = db.query(func.min(Transaction.date)).scalar()
-    last = db.query(func.max(Transaction.date)).scalar()
+    uid = current_user_id()
+    total = db.query(func.sum(Transaction.amount)).filter(Transaction.user_id == uid).scalar() or 0
+    count = db.query(func.count(Transaction.id)).filter(Transaction.user_id == uid).scalar() or 0
+    first = db.query(func.min(Transaction.date)).filter(Transaction.user_id == uid).scalar()
+    last = db.query(func.max(Transaction.date)).filter(Transaction.user_id == uid).scalar()
     return {
         "total_spent": round(float(total), 2),
         "transaction_count": count,
@@ -94,6 +104,7 @@ def dashboard(db: Session = Depends(get_db)):
     from datetime import datetime, timedelta
     from sqlalchemy import case
 
+    uid = current_user_id()
     now = datetime.now()
     start_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     start_week = start_today - timedelta(days=start_today.weekday())
@@ -102,13 +113,13 @@ def dashboard(db: Session = Depends(get_db)):
     # Today / week / month in one pass using conditional SUMs — no full-table load.
     today = db.query(
         func.coalesce(func.sum(case((Transaction.date >= start_today, Transaction.amount), else_=0)), 0)
-    ).scalar()
+    ).filter(Transaction.user_id == uid).scalar()
     week = db.query(
         func.coalesce(func.sum(case((Transaction.date >= start_week, Transaction.amount), else_=0)), 0)
-    ).scalar()
+    ).filter(Transaction.user_id == uid).scalar()
     month = db.query(
         func.coalesce(func.sum(case((Transaction.date >= start_month, Transaction.amount), else_=0)), 0)
-    ).scalar()
+    ).filter(Transaction.user_id == uid).scalar()
 
     # Monthly totals via SQL GROUP BY (strftime works on SQLite; use DATE_TRUNC for Postgres later).
     monthly_rows = (
@@ -116,6 +127,7 @@ def dashboard(db: Session = Depends(get_db)):
             func.strftime("%Y-%m", Transaction.date).label("month"),
             func.sum(Transaction.amount),
         )
+        .filter(Transaction.user_id == uid)
         .group_by("month")
         .order_by("month")
         .all()
@@ -128,6 +140,7 @@ def dashboard(db: Session = Depends(get_db)):
             Transaction.category,
             func.sum(Transaction.amount),
         )
+        .filter(Transaction.user_id == uid)
         .group_by(Transaction.category)
         .all()
     )
@@ -156,8 +169,13 @@ def dashboard(db: Session = Depends(get_db)):
 def dashboard_summary(currency: str = "$", lang: str = "en", db: Session = Depends(get_db)):
     from datetime import datetime, timedelta
 
+    uid = current_user_id()
     now = datetime.now()
-    rows = db.query(Transaction.date, Transaction.category, Transaction.amount).all()
+    rows = (
+        db.query(Transaction.date, Transaction.category, Transaction.amount)
+        .filter(Transaction.user_id == uid)
+        .all()
+    )
 
     monthly = {}
     for d, _, a in rows:

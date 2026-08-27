@@ -12,7 +12,7 @@ class TransactionBase(BaseModel):
 
 
 class TransactionCreate(TransactionBase):
-    pass
+    lhdn_relief: str | None = None
 
 
 class TransactionOut(TransactionBase):

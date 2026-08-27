@@ -114,6 +114,7 @@ export const translations = {
     "relief.socso": "SOCSO",
     "relief.epf_life": "EPF / Life insurance",
     "tax_relief": "Tax Relief",
+    "not_claimable": "Not claimable",
   },
   ms: {
     "app.name": "Pengesan Resit",
@@ -230,6 +231,7 @@ export const translations = {
     "relief.socso": "SOCSO",
     "relief.epf_life": "KWSP / Insurans hayat",
     "tax_relief": "Pelepasan Cukai",
+    "not_claimable": "Tidak boleh dituntut",
   },
 };
 

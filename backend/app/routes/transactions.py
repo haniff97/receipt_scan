@@ -66,6 +66,11 @@ def update_transaction(tx_id: int, payload: TransactionCreate, db: Session = Dep
         raise HTTPException(status_code=404, detail="Transaction not found")
     for field, value in payload.model_dump().items():
         setattr(tx, field, value)
+    # If a user overrides the relief, mark it as user-confirmed and refresh tax year.
+    if "lhdn_relief" in payload.model_dump():
+        tx.tax_year = tx.date.year if tx.date else None
+        if payload.lhdn_relief:
+            tx.lhdn_confidence = 1.0  # user confirmed
     db.commit()
     db.refresh(tx)
     return tx

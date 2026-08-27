@@ -23,6 +23,21 @@ import {
 const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api";
 const API_ORIGIN = API.replace(/\/api$/, "");
 
+const RELIEF_KEYS = [
+  "medical",
+  "medical_exam",
+  "education",
+  "lifestyle",
+  "sports",
+  "childcare",
+  "travel",
+  "insurance",
+  "breastfeeding",
+  "parents_medical",
+  "socso",
+  "epf_life",
+];
+
 export default function App() {
   const [activeTab, setActiveTab] = useState("home");
   const [lang, setLang] = useState(() => localStorage.getItem("lang") || "en");
@@ -82,7 +97,7 @@ export default function App() {
   const [showAddTx, setShowAddTx] = useState(false);
   const [addForm, setAddForm] = useState({ merchant: "", amount: "", category: "groceries", date: new Date().toISOString().slice(0, 10) });
   const [editingTx, setEditingTx] = useState(null);
-  const [editForm, setEditForm] = useState({ merchant: "", amount: "", category: "", date: "" });
+  const [editForm, setEditForm] = useState({ merchant: "", amount: "", category: "", date: "", lhdn_relief: "" });
   const searchRef = useRef(null);
   const fileRef = useRef(null);
   const cameraRef = useRef(null);
@@ -248,19 +263,24 @@ export default function App() {
       amount: t.amount != null ? String(t.amount) : "",
       category: t.category || "",
       date: t.date ? t.date.slice(0, 10) : "",
+      lhdn_relief: t.lhdn_relief || "",
     });
   };
 
   const saveEditTx = async () => {
     if (!editingTx) return;
     try {
-      await axios.patch(`${API}/transactions/${editingTx.id}`, {
+      const payload = {
         date: editForm.date ? new Date(editForm.date).toISOString() : editingTx.date,
         amount: parseFloat(editForm.amount),
         merchant: editForm.merchant || "Unknown",
         category: editForm.category || "other",
         description: editingTx.description || "",
-      });
+      };
+      if (editForm.lhdn_relief !== undefined) {
+        payload.lhdn_relief = editForm.lhdn_relief || null;
+      }
+      await axios.patch(`${API}/transactions/${editingTx.id}`, payload);
       setEditingTx(null);
       setMsg(t("total_updated"));
       await refresh();
@@ -375,6 +395,25 @@ export default function App() {
     const a = document.createElement("a");
     a.href = url;
     a.download = `receipts_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportReliefCsv = () => {
+    if (!lhdnData || lhdnData.length === 0) return;
+    const yr = lhdnData.find((y) => y.year === lhdnYear) || lhdnData[0];
+    if (!yr || yr.reliefs.length === 0) return;
+
+    const header = "Relief Category,Spent,Cap,Claimable";
+    const rows = yr.reliefs.map((r) =>
+      `"${reliefName(r.relief).replace(/"/g, '""')}",${r.spent},${r.cap || ""},${r.claimable}`
+    );
+    const csv = [header, ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `tax_relief_${lhdnYear}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -1180,6 +1219,18 @@ export default function App() {
               style={{ padding: 10, borderRadius: 10, border: "1px solid var(--border)", fontFamily: "inherit" }}
             />
 
+            <label style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("tax_relief")}</label>
+            <select
+              value={editForm.lhdn_relief ?? ""}
+              onChange={(e) => setEditForm((f) => ({ ...f, lhdn_relief: e.target.value }))}
+              style={{ padding: 10, borderRadius: 10, border: "1px solid var(--border)", fontFamily: "inherit", background: "#fff" }}
+            >
+              <option value="">{t("not_claimable")}</option>
+              {RELIEF_KEYS.map((r) => (
+                <option key={r} value={r}>{reliefName(r)}</option>
+              ))}
+            </select>
+
             <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
               <button onClick={saveEditTx} style={{ flex: 1, background: "#111111", color: "#fff", borderRadius: 12, padding: 12, fontWeight: 600 }}>
                 {t("save")}
@@ -1418,17 +1469,33 @@ export default function App() {
           {/* Tax Relief view */}
           {receiptFilter === "lhdn" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Tax year:</span>
-                <select
-                  value={lhdnYear}
-                  onChange={(e) => setLhdnYear(Number(e.target.value))}
-                  style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid var(--border)", background: "#fff", fontWeight: 600, fontSize: 13 }}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Tax year:</span>
+                  <select
+                    value={lhdnYear}
+                    onChange={(e) => setLhdnYear(Number(e.target.value))}
+                    style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid var(--border)", background: "#fff", fontWeight: 600, fontSize: 13 }}
+                  >
+                    {[...new Set([new Date().getFullYear(), new Date().getFullYear() - 1, ...((lhdnData || []).map((y) => y.year))])].sort().map((y) => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  onClick={exportReliefCsv}
+                  style={{
+                    background: "#e3f4ef",
+                    color: "#00b894",
+                    borderRadius: 10,
+                    padding: "8px 12px",
+                    fontWeight: 600,
+                    fontSize: 12
+                  }}
                 >
-                  {[...new Set([new Date().getFullYear(), new Date().getFullYear() - 1, ...((lhdnData || []).map((y) => y.year))])].sort().map((y) => (
-                    <option key={y} value={y}>{y}</option>
-                  ))}
-                </select>
+                  <Download size={14} style={{ verticalAlign: "middle", marginRight: 4 }} />
+                  CSV
+                </button>
               </div>
 
               {!lhdnData || lhdnData.length === 0 ? (

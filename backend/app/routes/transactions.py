@@ -5,7 +5,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..deepseek import summarize_spending
-from ..database import get_db, current_user_id
+from ..database import get_db, current_user_id, IS_SQLITE
 from ..models import Receipt, Transaction
 from ..schemas import TransactionCreate, TransactionOut
 
@@ -34,7 +34,10 @@ def list_transactions(
 
 @router.post("/transactions", response_model=TransactionOut)
 def create_transaction(payload: TransactionCreate, db: Session = Depends(get_db)):
-    tx = Transaction(**payload.model_dump(), user_id=current_user_id())
+    data = payload.model_dump()
+    if data.get("lhdn_relief"):
+        data["tax_year"] = data["date"].year if data.get("date") else None
+    tx = Transaction(**data, user_id=current_user_id())
     db.add(tx)
     db.commit()
     db.refresh(tx)
@@ -126,10 +129,14 @@ def dashboard(db: Session = Depends(get_db)):
         func.coalesce(func.sum(case((Transaction.date >= start_month, Transaction.amount), else_=0)), 0)
     ).filter(Transaction.user_id == uid).scalar()
 
-    # Monthly totals via SQL GROUP BY (strftime works on SQLite; use DATE_TRUNC for Postgres later).
+    # Monthly totals via SQL GROUP BY. Dialect-aware: strftime (SQLite) vs DATE_TRUNC (Postgres).
+    if IS_SQLITE:
+        month_expr = func.strftime("%Y-%m", Transaction.date).label("month")
+    else:
+        month_expr = func.to_char(Transaction.date, "YYYY-MM").label("month")
     monthly_rows = (
         db.query(
-            func.strftime("%Y-%m", Transaction.date).label("month"),
+            month_expr,
             func.sum(Transaction.amount),
         )
         .filter(Transaction.user_id == uid)

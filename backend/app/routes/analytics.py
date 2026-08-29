@@ -12,13 +12,13 @@ router = APIRouter()
 
 
 @router.get("/anomalies")
-def anomalies(method: str = "iqr", lang: str = "en", currency: str = "$", db: Session = Depends(get_db)):
+def anomalies(method: str = "iqr", lang: str = "en", currency: str = "$", k: float = 1.5, db: Session = Depends(get_db)):
     transactions = (
         db.query(Transaction)
         .filter(Transaction.user_id == current_user_id())
         .all()
     )
-    flagged = detect_anomalies(transactions, method=method)
+    flagged = detect_anomalies(transactions, method=method, k=k)
 
     if flagged:
         per_cat = defaultdict(list)

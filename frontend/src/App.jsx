@@ -62,6 +62,7 @@ export default function App() {
   };
   const [currency, setCurrency] = useState(() => localStorage.getItem("currency") || "RM");
   const [aiEnabled, setAiEnabled] = useState(() => localStorage.getItem("aiEnabled") !== "off");
+  const [alertThreshold, setAlertThreshold] = useState(() => Number(localStorage.getItem("alertThreshold")) || 1.5);
   const [stats, setStats] = useState(null);
   const [anomalies, setAnomalies] = useState([]);
   const [rejectedAnomalies, setRejectedAnomalies] = useState([]);
@@ -69,6 +70,7 @@ export default function App() {
   const [transactions, setTransactions] = useState([]);
   const [dash, setDash] = useState({ today: 0, week: 0, month: 0, monthly: [], byCategory: [] });
   const [dashSummary, setDashSummary] = useState(null);
+  const [lhdnSummary, setLhdnSummary] = useState(null);
   const [dashFilter, setDashFilter] = useState({ category: "", period: "" });
   const [query, setQuery] = useState("");
   const [result, setResult] = useState(null);
@@ -95,18 +97,19 @@ export default function App() {
   const [msg, setMsg] = useState("");
   const [feedbackText, setFeedbackText] = useState("");
   const [showAddTx, setShowAddTx] = useState(false);
-  const [addForm, setAddForm] = useState({ merchant: "", amount: "", category: "groceries", date: new Date().toISOString().slice(0, 10) });
+  const [addForm, setAddForm] = useState({ merchant: "", amount: "", category: "groceries", date: new Date().toISOString().slice(0, 10), lhdn_relief: "" });
   const [editingTx, setEditingTx] = useState(null);
   const [editForm, setEditForm] = useState({ merchant: "", amount: "", category: "", date: "", lhdn_relief: "" });
   const searchRef = useRef(null);
   const fileRef = useRef(null);
   const cameraRef = useRef(null);
+  const restoreFileRef = useRef(null);
 
   const refresh = async () => {
     try {
       const [s, a, r, d, t, sm, lh] = await Promise.allSettled([
         axios.get(`${API}/stats`),
-        axios.get(`${API}/anomalies`, { params: { lang, currency } }),
+        axios.get(`${API}/anomalies`, { params: { lang, currency, k: alertThreshold } }),
         axios.get(`${API}/receipts`),
         axios.get(`${API}/dashboard`),
         axios.get(`${API}/transactions`),
@@ -131,6 +134,15 @@ export default function App() {
   useEffect(() => {
     refresh();
   }, []);
+
+  useEffect(() => {
+    if (receiptFilter === "lhdn") {
+      axios
+        .get(`${API}/lhdn/summary`, { params: { year: lhdnYear, currency, lang } })
+        .then((r) => setLhdnSummary(r.data.summary))
+        .catch(() => setLhdnSummary(null));
+    }
+  }, [receiptFilter, lhdnYear, currency, lang]);
 
   useEffect(() => {
     if (activeTab === "dashboard") refresh();
@@ -178,7 +190,18 @@ export default function App() {
       setConfirming(true);
       await refresh();
     } catch (err) {
-      setMsg(err.response?.data?.detail || t("upload_failed"));
+      if (err.response?.status === 409) {
+        const existingId = err.response?.headers?.["x-receipt-id"] || parseInt((err.response?.data?.detail || "").match(/id=(\d+)/)?.[1] || "0", 10);
+        const existing = receipts.find((r) => r.id === existingId);
+        if (existing && window.confirm(t("open_existing_receipt"))) {
+          setSelectedReceipt(existing);
+          setMsg("");
+        } else {
+          setMsg(err.response?.data?.detail || t("upload_failed"));
+        }
+      } else {
+        setMsg(err.response?.data?.detail || t("upload_failed"));
+      }
     } finally {
       setProcessing(false);
     }
@@ -240,15 +263,17 @@ export default function App() {
       return;
     }
     try {
-      await axios.post(`${API}/transactions`, {
+      const payload = {
         date: new Date(addForm.date || new Date().toISOString().slice(0, 10)).toISOString(),
         amount,
         merchant: addForm.merchant.trim() || "Unknown",
         category: addForm.category,
         description: "",
-      });
+      };
+      if (addForm.lhdn_relief) payload.lhdn_relief = addForm.lhdn_relief;
+      await axios.post(`${API}/transactions`, payload);
       setShowAddTx(false);
-      setAddForm({ merchant: "", amount: "", category: "groceries", date: new Date().toISOString().slice(0, 10) });
+      setAddForm({ merchant: "", amount: "", category: "groceries", date: new Date().toISOString().slice(0, 10), lhdn_relief: "" });
       setMsg(t("saved"));
       await refresh();
     } catch (err) {
@@ -375,19 +400,35 @@ export default function App() {
       if (receiptFilter === "day" && d.toDateString() !== now.toDateString()) return false;
       if (receiptFilter === "week" && d < startOfWeek) return false;
       if (receiptFilter === "month" && d < startOfMonth) return false;
+      if (receiptFilter === "lhdn") {
+        const relief = t.lhdn_relief;
+        if (!relief || relief === "unknown" || relief === "not_claimable") return false;
+      }
       return true;
     });
 
     if (data.length === 0) return;
-    const header = "Date,Merchant,Category,Amount,Description";
+    const showRelief = receiptFilter === "lhdn";
+    const header = showRelief
+      ? "Date,Merchant,Category,Tax Relief,Amount,Description"
+      : "Date,Merchant,Category,Amount,Description";
     const rows = data.map((t) =>
-      [
-        t.date.slice(0, 10),
-        `"${(t.merchant || "").replace(/"/g, '""')}"`,
-        `"${(t.category || "").replace(/"/g, '""')}"`,
-        t.amount,
-        `"${(t.description || "").replace(/"/g, '""')}"`,
-      ].join(",")
+      showRelief
+        ? [
+            t.date.slice(0, 10),
+            `"${(t.merchant || "").replace(/"/g, '""')}"`,
+            `"${(t.category || "").replace(/"/g, '""')}"`,
+            `"${(t.lhdn_relief || "").replace(/"/g, '""')}"`,
+            t.amount,
+            `"${(t.description || "").replace(/"/g, '""')}"`,
+          ].join(",")
+        : [
+            t.date.slice(0, 10),
+            `"${(t.merchant || "").replace(/"/g, '""')}"`,
+            `"${(t.category || "").replace(/"/g, '""')}"`,
+            t.amount,
+            `"${(t.description || "").replace(/"/g, '""')}"`,
+          ].join(",")
     );
     const csv = [header, ...rows].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -416,6 +457,35 @@ export default function App() {
     a.download = `tax_relief_${lhdnYear}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const downloadBackup = async () => {
+    try {
+      const r = await axios.get(`${API}/backup`, { responseType: "blob" });
+      const url = URL.createObjectURL(new Blob([r.data]));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `receipt_tracker_backup_${new Date().toISOString().slice(0, 10)}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setMsg(t("backup_done"));
+    } catch (err) {
+      setMsg(t("delete_failed"));
+    }
+  };
+
+  const restoreBackup = async (file) => {
+    if (!file) return;
+    if (!window.confirm(t("confirm_restore"))) return;
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      await axios.post(`${API}/backup/restore`, fd);
+      setMsg(t("restore_done") + " " + t("restart_required"));
+      await refresh();
+    } catch (err) {
+      setMsg(err.response?.data?.detail || t("delete_failed"));
+    }
   };
 
   return (
@@ -1141,6 +1211,18 @@ export default function App() {
               style={{ padding: 10, borderRadius: 10, border: "1px solid var(--border)", fontFamily: "inherit" }}
             />
 
+            <label style={{ fontSize: 12, color: "var(--text-muted)" }}>{t("tax_relief")}</label>
+            <select
+              value={addForm.lhdn_relief}
+              onChange={(e) => setAddForm((f) => ({ ...f, lhdn_relief: e.target.value }))}
+              style={{ padding: 10, borderRadius: 10, border: "1px solid var(--border)", fontFamily: "inherit", background: "#fff" }}
+            >
+              <option value="">{t("not_claimable")}</option>
+              {RELIEF_KEYS.map((r) => (
+                <option key={r} value={r}>{reliefName(r)}</option>
+              ))}
+            </select>
+
             <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
               <button onClick={addTransaction} style={{ flex: 1, background: "#111111", color: "#fff", borderRadius: 12, padding: 12, fontWeight: 600 }}>
                 {t("save")}
@@ -1326,6 +1408,80 @@ export default function App() {
           </div>
 
           <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>
+            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>{t("alert_threshold")}</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              {[1.0, 1.5, 2.0, 3.0].map((v) => (
+                <button
+                  key={v}
+                  onClick={() => {
+                    setAlertThreshold(v);
+                    localStorage.setItem("alertThreshold", String(v));
+                    refresh();
+                  }}
+                  style={{
+                    flex: 1,
+                    background: alertThreshold === v ? "#111111" : "#eceafb",
+                    color: alertThreshold === v ? "#fff" : "#6c5ce7",
+                    borderRadius: 10,
+                    padding: "8px 0",
+                    fontWeight: 600,
+                    fontSize: 12
+                  }}
+                >
+                  {v}x
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8 }}>
+              {t("alert_threshold_note")}
+            </div>
+          </div>
+
+          <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>
+            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>{t("backup")}</div>
+            <button
+              onClick={downloadBackup}
+              style={{
+                width: "100%",
+                background: "#111111",
+                color: "#fff",
+                borderRadius: 12,
+                padding: 12,
+                fontWeight: 600
+              }}
+            >
+              {t("download_backup")}
+            </button>
+            <button
+              onClick={() => restoreFileRef.current?.click()}
+              style={{
+                width: "100%",
+                marginTop: 8,
+                background: "#eceafb",
+                color: "#6c5ce7",
+                borderRadius: 12,
+                padding: 12,
+                fontWeight: 600
+              }}
+            >
+              {t("restore_backup")}
+            </button>
+            <input
+              ref={restoreFileRef}
+              type="file"
+              accept=".zip"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                restoreBackup(e.target.files[0]);
+                e.target.value = "";
+              }}
+            />
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 8 }}>
+              {t("backup_note")}
+            </div>
+          </div>
+
+          <div style={{ background: "var(--card)", borderRadius: 20, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.03)" }}>
             <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>{t("feedback")}</div>
             <textarea
               value={feedbackText}
@@ -1497,6 +1653,13 @@ export default function App() {
                   CSV
                 </button>
               </div>
+
+              {lhdnSummary && (
+                <div style={{ background: "linear-gradient(135deg, #6c5ce7, #a29bfe)", borderRadius: 16, padding: 16, color: "#fff", boxShadow: "0 2px 10px rgba(108,92,231,0.25)" }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, opacity: 0.9, marginBottom: 6 }}>{t("ai_summary")}</div>
+                  <div style={{ fontSize: 13, lineHeight: 1.5 }}>{lhdnSummary}</div>
+                </div>
+              )}
 
               {!lhdnData || lhdnData.length === 0 ? (
                 <div style={{ background: "var(--card)", borderRadius: 20, padding: 24, textAlign: "center", color: "var(--text-muted)", fontSize: 14 }}>

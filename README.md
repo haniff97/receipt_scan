@@ -52,17 +52,22 @@ Scan/
 │   │   ├── ocr.py             # Tesseract OCR + preprocessing + regex parser + HEIC/PDF
 │   │   ├── deskew.py          # OpenCV auto-deskew (detect corners, perspective-correct)
 │   │   ├── nlq.py             # Rule-based NLQ fallback engine
-│   │   ├── anomalies.py       # IQR statistical anomaly detector
+│   │   ├── anomalies.py       # IQR statistical anomaly detector (small-sample aware)
 │   │   ├── deepseek.py        # DeepSeek API calls (OCR cleanup, NLQ, summary, anomaly review)
+│   │   ├── gemini.py          # Gemini vision receipt reading (+ LHDN relief mapping)
+│   │   ├── database.py        # SQLite/Postgres + current_user_id() (multi-user prep)
 │   │   └── routes/
-│   │       ├── transactions.py  # CRUD, stats, dashboard, AI summary, PATCH amount
-│   │       ├── receipts.py      # upload → deskew → OCR → AI, list/serve/delete receipts
-│   │       ├── query.py         # NLQ (DeepSeek first, rules fallback)
-│   │       └── analytics.py     # anomalies (statistics + AI review)
+│   │       ├── transactions.py  # CRUD, stats, dashboard (SQL GROUP BY), AI summary, PATCH
+│   │       ├── receipts.py      # upload → Gemini/OCR → AI, list/serve/delete receipts
+│   │       ├── query.py         # NLQ (DeepSeek first, rules fallback, cached)
+│   │       ├── analytics.py     # anomalies (statistics + AI review, per-user)
+│   │       ├── lhdn.py          # LHDN tax relief aggregation (per-year, capped) + summary
+│   │       └── backup.py        # backup/restore (DB + uploads as zip)
 │   ├── uploads/               # saved receipt images
+│   ├── migrate_lhdn.py        # DB migration: LHDN columns + user_id + relief caps
 │   ├── seed.py                # generates ~350 sample transactions
 │   ├── requirements.txt
-│   └── .env                   # DEEPSEEK_API_KEY (not committed)
+│   └── .env                   # DEEPSEEK_API_KEY + GEMINI_API_KEY (not committed)
 └── frontend/                  # React app (Vite)
     └── src/
         ├── App.jsx            # entire UI (home, scan, receipts, dashboard, alerts, settings)
@@ -72,14 +77,20 @@ Scan/
 
 ## 📝 Recent Updates
 
-- **Edit & delete transactions:** Each transaction in the Dashboard list has pencil (edit merchant/amount/category/date) and trash (delete) buttons.
+- **Backup & restore:** One-tap **Download backup** (SQLite DB + all receipt images as a zip) and **Restore from backup** in Settings — plus an "Alert sensitivity" setting (1x/1.5x/2x/3x).
+- **Duplicate-scan → open existing:** Re-scanning an already-uploaded receipt now returns a `409` with the receipt id, and the app asks whether to open the existing receipt. Also fixed a bug where the `ai=off` field was silently ignored (it now actually disables AI).
+- **LHDN Tax Relief view:** Receipt Gallery has a **Tax Relief** filter showing per-year totals vs. caps with progress bars, an **AI summary**, and relief CSV export. Relief can be corrected in the edit modal or set on manual adds.
+- **Postgres-ready:** `DATABASE_URL` env var switches SQLite ↔ PostgreSQL; monthly aggregation is dialect-aware; backup/restore work on SQLite.
+- **Multi-user prep (user_id):** Added a `user_id` column to `transactions` and `receipts` (defaults to `local-user`). Every query filters by `current_user_id()` — so when Supabase/Auth arrives, you swap one function and the app is per-user. Run `migrate_lhdn.py` on any existing deployment to add the column.
+- **LHDN Tax Relief:** Receipts are auto-mapped to Malaysian tax-relief categories (medical, lifestyle, sports, etc.). A **Tax Relief view** in the Receipt Gallery shows per-year totals vs. caps with progress bars. You can correct the AI's relief guess via the edit modal, and export a relief summary CSV.
+- **Edit & delete transactions:** Each transaction in the Dashboard list has pencil (edit merchant/amount/category/date/relief) and trash (delete) buttons.
 - **Manual entry mode:** When AI is off, scanning shows a full manual form (merchant, amount, category, date) so non-AI users can still add receipts.
 - **CSV respects filters:** The export button now only includes transactions matching the current Day/Week/Month filter.
 - **Ask AI cached answers:** The same question is answered once, then served from cache until new data arrives (saves AI tokens/cost).
 - **SQL aggregation:** Dashboard today/week/month, monthly, and category totals now use SQL `GROUP BY` instead of loading all rows into Python (faster with hundreds of receipts).
 - **AI token optimizations:** Compact AI payloads (aggregates, not raw rows) + fingerprint-cached dashboard summary — see the "AI token & cost optimizations" section.
 - **Languages:** Added full **Bahasa Melayu** support — the whole UI translates (Settings → Language), and **AI replies follow** (dashboard summary, Ask AI, anomaly reasons are generated in the selected language via a `lang` parameter).
-- **Receipt gallery filters:** Filter receipts by **Day / Week / Month**.
+- **Receipt gallery filters:** Filter receipts by **Day / Week / Month / Tax Relief**.
 - **Export CSV:** One-tap download of all transactions as a `.csv` file.
 - **Settings:** Added **AI toggle** (on = AI auto-read, off = manual entry — the future free-tier mode) and a **Feedback box**.
 - **Upgraded Vision API:** Switched the default model to the latest **`gemini-3.7-flash`** for highly accurate receipt parsing (fixed a 404 error from an invalid model name).
@@ -150,7 +161,11 @@ On macOS: `brew install tesseract`
 | GET | `/api/dashboard/summary?currency=RM&lang=ms` | AI plain-English/Bahasa Melayu spending summary |
 | GET | `/api/query?q=...&lang=ms` | Natural language question answered by AI (in chosen language) |
 | GET | `/api/anomalies?lang=ms` | Anomaly candidates reviewed by AI (reasons in chosen language) |
-| POST | `/api/receipts/upload` | Upload receipt (image/PDF/HEIC) → deskew → OCR → AI → create transaction |
+| GET | `/api/lhdn/relief?year=2025` | LHDN relief totals per category (SQL GROUP BY, capped) for a tax year |
+| GET | `/api/lhdn/summary?year=2025` | Cached AI summary of claimable reliefs |
+| GET | `/api/backup` | Download zip of SQLite DB + receipt images |
+| POST | `/api/backup/restore` | Replace DB + uploads from an uploaded backup zip (restart required) |
+| POST | `/api/receipts/upload` | Upload receipt (image/PDF/HEIC) → Gemini → AI → create transaction |
 | GET | `/api/receipts` | List receipts |
 | GET | `/api/receipts/{id}/image` | Serve a saved receipt image |
 | DELETE | `/api/receipts/{id}` | Delete a receipt + its transactions + image |
@@ -256,6 +271,13 @@ The project ships Dockerfiles + `docker-compose.yml`. Key gotchas on ARM boards 
 
 ```bash
 docker compose up -d --build
+```
+
+**⚠️ After deploying new backend code, always run the DB migration** (adds `user_id`, LHDN columns, and relief caps). Skipping it causes "no such column: transactions.user_id" errors:
+
+```bash
+docker exec -it receipt_scan-backend-1 python migrate_lhdn.py
+docker compose restart backend
 ```
 
 Test the deployment end-to-end (the file must exist on the *host*, not inside a container):

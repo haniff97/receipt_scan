@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ScanApp - AI Powered Expense Tracking</title>
+    <meta name="description" content="Effortlessly track your expenses by scanning receipts and asking our AI. Never lose track of a single cent.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    
+    <nav class="navbar">
+        <div class="container nav-container">
+            <div class="logo">ScanApp</div>
+            <div class="nav-links">
+                <a href="#features">Features</a>
+                <a href="#how-it-works">How it Works</a>
+                <a href="#download" class="btn btn-primary btn-sm">Get Early Access</a>
+            </div>
+        </div>
+    </nav>
+
+    <header class="hero">
+        <div class="container hero-container">
+            <div class="hero-content fade-in-up">
+                <div class="badge">✨ New AI Features Available</div>
+                <h1 class="hero-title">Track every cent with <span>AI precision.</span></h1>
+                <p class="hero-subtitle">Scan receipts instantly, get automated categorizations, and converse with your personalized financial AI assistant.</p>
+                <div class="hero-cta">
+                    <a href="#download" class="btn btn-primary">Download App</a>
+                    <a href="#features" class="btn btn-secondary">Explore Features</a>
+                </div>
+            </div>
+            <div class="hero-image-wrapper fade-in-up delay-1">
+                <div class="phone-mockup floating">
+                    <img src="assets/media_1788027197658.png" alt="ScanApp Home Screen" class="app-screen">
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <section id="features" class="features-section">
+        <div class="container">
+            <div class="section-header fade-in-up">
+                <h2>Designed for clarity.</h2>
+                <p>Understand your spending habits at a glance with beautiful, intuitive dashboards.</p>
+            </div>
+            
+            <div class="feature-row">
+                <div class="feature-text fade-in-right">
+                    <h3>Smart Dashboard</h3>
+                    <p>Get a comprehensive view of your finances. See your spending by month, break it down by category, and easily track your recent transactions all in one place.</p>
+                    <ul class="feature-list">
+                        <li><span class="icon">📈</span> Monthly trends analysis</li>
+                        <li><span class="icon">🍕</span> Automatic categorizations</li>
+                        <li><span class="icon">🔍</span> Detailed transaction history</li>
+                    </ul>
+                </div>
+                <div class="feature-image fade-in-left delay-1">
+                    <div class="phone-mockup">
+                        <img src="assets/media_1788027197669.png" alt="ScanApp Dashboard" class="app-screen">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="features-section alt-bg">
+        <div class="container">
+            <div class="feature-row reverse">
+                <div class="feature-text fade-in-left">
+                    <h3>Conversational AI Search</h3>
+                    <p>Stop scrolling through endless lists. Just ask ScanApp what you spent. Our advanced AI understands natural language to give you exactly the information you need, instantly.</p>
+                    <div class="testimonial">
+                        "What did I spend yesterday?" <br>
+                        <strong>- AI: You spent RM43.46 yesterday on dining.</strong>
+                    </div>
+                </div>
+                <div class="feature-image fade-in-right delay-1">
+                    <div class="phone-mockup floating-slow">
+                        <img src="assets/media_1788027197642.png" alt="ScanApp AI Search" class="app-screen">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="download" class="cta-section">
+        <div class="container cta-container fade-in-up">
+            <h2>Ready to scan some receipts?</h2>
+            <p>Join thousands of users who are taking control of their finances effortlessly.</p>
+            <form class="waitlist-form" onsubmit="event.preventDefault(); alert('Thanks for joining!');">
+                <input type="email" placeholder="Enter your email address" required>
+                <button type="submit" class="btn btn-primary">Join Waitlist</button>
+            </form>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container footer-container">
+            <div class="footer-logo">ScanApp</div>
+            <div class="footer-links">
+                <a href="#">Privacy Policy</a>
+                <a href="#">Terms of Service</a>
+                <a href="#">Support</a>
+            </div>
+            <p class="copyright">&copy; 2026 ScanApp Inc. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 import os
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pillow_heif import register_heif_opener
 from sqlalchemy.orm import Session
@@ -24,8 +24,8 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 @router.post("/receipts/upload", response_model=ReceiptCreateResponse)
 async def upload_receipt(
     file: UploadFile = File(...),
-    category: str = "groceries",
-    ai: str = "on",
+    category: str = Form("groceries"),
+    ai: str = Form("on"),
     db: Session = Depends(get_db),
 ):
     ai_on = ai.lower() != "off"
@@ -71,6 +71,7 @@ async def upload_receipt(
                 status_code=409,
                 detail=f"This receipt was already uploaded (id={existing.id}). "
                        f"Scan a different receipt.",
+                headers={"X-Receipt-Id": str(existing.id)},
             )
 
     parsed = parse_receipt(text) if text else {"total": None, "merchant": "Unknown", "date": None}
